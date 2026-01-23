@@ -83,6 +83,8 @@ A web-based admin portal allows store owners to:
 
 ## 🚀 MVP Screenshots
 
+[Drive](https://drive.google.com/drive/folders/1Klr6pfNmefMWn6rPPY7HJD-Om4z2-QG-?dmr=1&ec=wgc-drive-hero-goto)
+
 ![Entry QR Scan](<img width="720" height="1600" alt="image" src="https://github.com/user-attachments/assets/6d1c5a1f-a77b-47d0-800c-71cfaff47217" />
 )
 ![Product Scan](<img width="720" height="1600" alt="image" src="https://github.com/user-attachments/assets/df782150-0f49-4167-bf97-e475454410a9" />
