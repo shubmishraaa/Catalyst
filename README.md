@@ -53,6 +53,7 @@ The solution is designed to **work alongside existing checkout counters**, not r
 - **Google Cloud Functions** – Backend APIs for session handling, product lookup, payment validation, and QR verification
 
 ### Database
+- MySQL
 - Platform-managed store and product data  
 - Each store’s catalog is logically separated using store identifiers  
 
