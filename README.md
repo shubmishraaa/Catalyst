@@ -1,7 +1,7 @@
 # Catalyst
 
 A mobile-first, session-based self-checkout platform designed to reduce billing queues in retail stores while maintaining controlled access and security.  
-The system follows a **platform onboarding model**, where only registered and participating stores are supported.
+The system follows a **platform onboarding model**, where registered and participating stores are supported.
 
 ---
 
