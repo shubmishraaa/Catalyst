@@ -113,3 +113,4 @@ A web-based admin portal allows store owners to:
 - Inventory sync with existing store POS systems  
 - Analytics dashboard for store performance and peak-hour insights  
 - Multi-store and chain-level management support  
+- Multiple payment options
