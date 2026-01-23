@@ -82,10 +82,14 @@ A web-based admin portal allows store owners to:
 
 ## 🚀 MVP Screenshots
 
-![Entry QR Scan]()
-![Product Scan]()
-![Cart & Payment]()
-![Exit QR]()
+![Entry QR Scan](<img width="720" height="1600" alt="image" src="https://github.com/user-attachments/assets/6d1c5a1f-a77b-47d0-800c-71cfaff47217" />
+)
+![Product Scan](<img width="720" height="1600" alt="image" src="https://github.com/user-attachments/assets/df782150-0f49-4167-bf97-e475454410a9" />
+)
+![Cart & Payment](<img width="720" height="1600" alt="image" src="https://github.com/user-attachments/assets/0d59f0c1-8b3f-4b0e-b99c-05f5864f9174" />
+)
+![Exit QR](<img width="720" height="1600" alt="image" src="https://github.com/user-attachments/assets/6f2e55f7-a678-4f91-8e5f-210cfce5ca84" />
+)
 ![Admin Portal]()
 
 ---
