@@ -97,7 +97,7 @@ A web-based admin portal allows store owners to:
 ## 🎥 Demo Video
 
 **Demo Video Link:**  
-
+[View](https://www.youtube.com/shorts/14c8SqYzUbU)
 
 ---
 
