@@ -1,3 +1,5 @@
+**🚧 This repository currently contains the project structure and documentation. Source code is under active development.**
+
 # Catalyst
 
 A mobile-first, session-based self-checkout platform designed to reduce billing queues in retail stores while maintaining controlled access and lightweight security.  
