@@ -38,6 +38,11 @@ interface UserRecord {
   email?: string;
   isOnline?: boolean;
   lastSeenAt?: { seconds?: number };
+  activeSessionId?: string | null;
+  activeSessionStatus?: "active" | "completed" | "abandoned" | null;
+  activeStoreId?: string | null;
+  sessionExpiresAt?: { seconds?: number };
+  lastSessionActivityAt?: { seconds?: number };
 }
 
 const ACTIVE_USER_WINDOW_SECONDS = 45;
@@ -49,7 +54,8 @@ export default function AdminDashboardPage() {
   const [flagsCount, setFlagsCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [totalUsersToday, setTotalUsersToday] = useState(0);
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
+  const [rawSessions, setRawSessions] = useState<SessionRecord[]>([]);
+  const [displaySessions, setDisplaySessions] = useState<SessionRecord[]>([]);
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [cartSummaries, setCartSummaries] = useState<Record<string, CartSummary>>({});
   const [usersById, setUsersById] = useState<Record<string, UserRecord>>({});
@@ -63,7 +69,7 @@ export default function AdminDashboardPage() {
           .map((sessionDoc) => ({ id: sessionDoc.id, ...sessionDoc.data() } as SessionRecord))
           .sort((a, b) => (b.lastActivityAt?.seconds || b.createdAt?.seconds || 0) - (a.lastActivityAt?.seconds || a.createdAt?.seconds || 0));
 
-        setSessions(nextSessions);
+        setRawSessions(nextSessions);
       }
     );
 
@@ -163,7 +169,7 @@ export default function AdminDashboardPage() {
     startOfToday.setHours(0, 0, 0, 0);
     const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
 
-    const activeSessions = sessions.filter((session) => {
+    const activeSessions = rawSessions.filter((session) => {
       if (session.status !== "active") {
         return false;
       }
@@ -171,15 +177,38 @@ export default function AdminDashboardPage() {
       const expiresAtSeconds = session.expiresAt?.seconds;
       return !expiresAtSeconds || expiresAtSeconds > currentTimeSeconds;
     });
+    const activeSessionsFromUsers = Object.entries(usersById).reduce<SessionRecord[]>((acc, [userId, userRecord]) => {
+      const expiresAtSeconds = userRecord.sessionExpiresAt?.seconds || 0;
+      if (
+        userRecord.activeSessionId &&
+        userRecord.activeSessionStatus === "active" &&
+        (!expiresAtSeconds || expiresAtSeconds > currentTimeSeconds) &&
+        !activeSessions.some((session) => session.id === userRecord.activeSessionId)
+      ) {
+        acc.push({
+          id: userRecord.activeSessionId,
+          userId,
+          storeId: userRecord.activeStoreId || "Unknown store",
+          status: "active",
+          createdAt: userRecord.lastSessionActivityAt,
+          lastActivityAt: userRecord.lastSessionActivityAt,
+          expiresAt: userRecord.sessionExpiresAt,
+        });
+      }
+
+      return acc;
+    }, []);
+    const nextDisplaySessions = [...activeSessionsFromUsers, ...rawSessions]
+      .sort((a, b) => (b.lastActivityAt?.seconds || b.createdAt?.seconds || 0) - (a.lastActivityAt?.seconds || a.createdAt?.seconds || 0));
 
     const usersSeenToday = new Set(
-      sessions
+      rawSessions
         .filter((session) => (session.createdAt?.seconds || 0) >= startOfTodaySeconds)
         .map((session) => session.userId)
         .filter(Boolean)
     );
 
-    setActiveSessionsCount(activeSessions.length);
+    setActiveSessionsCount(activeSessions.length + activeSessionsFromUsers.length);
     setTotalUsersToday(usersSeenToday.size);
     setActiveUsersCount(
       Object.values(usersById).filter((userRecord) => {
@@ -187,7 +216,8 @@ export default function AdminDashboardPage() {
         return userRecord.isOnline === true && (currentTimeSeconds - lastSeenSeconds) <= ACTIVE_USER_WINDOW_SECONDS;
       }).length
     );
-  }, [clockTick, sessions, usersById]);
+    setDisplaySessions(nextDisplaySessions);
+  }, [clockTick, rawSessions, usersById]);
 
   const stats = [
     { label: "Active Users", value: activeUsersCount, icon: Users, color: "text-sky-600", bg: "bg-sky-500/10" },
@@ -264,7 +294,7 @@ export default function AdminDashboardPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sessions.length === 0 ? (
+              {displaySessions.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="px-6 py-16">
                     <div className="flex flex-col items-center justify-center text-center">
@@ -274,7 +304,7 @@ export default function AdminDashboardPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                sessions.slice(0, 6).map((session) => {
+                displaySessions.slice(0, 6).map((session: SessionRecord) => {
                   const cartSummary = cartSummaries[session.id];
                   const itemCount = cartSummary?.itemCount || 0;
                   const liveTotal = cartSummary?.totalAmount || 0;

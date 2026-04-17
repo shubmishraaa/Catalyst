@@ -13,6 +13,11 @@ export interface UserProfile {
   allergenAlertsEnabled: boolean;
   isOnline?: boolean;
   lastSeenAt?: unknown;
+  activeSessionId?: string | null;
+  activeSessionStatus?: "active" | "completed" | "abandoned" | null;
+  activeStoreId?: string | null;
+  sessionExpiresAt?: unknown;
+  lastSessionActivityAt?: unknown;
 }
 
 const ADMIN_EMAIL = "admin@catalyst.com";
@@ -113,6 +118,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               allergenAlertsEnabled: data.allergenAlertsEnabled !== false,
               isOnline: data.isOnline === true,
               lastSeenAt: data.lastSeenAt,
+              activeSessionId: data.activeSessionId ?? null,
+              activeSessionStatus: data.activeSessionStatus ?? null,
+              activeStoreId: data.activeStoreId ?? null,
+              sessionExpiresAt: data.sessionExpiresAt,
+              lastSessionActivityAt: data.lastSessionActivityAt,
             };
             setProfile(nextProfile);
             setRole(nextProfile.role);

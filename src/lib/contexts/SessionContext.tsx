@@ -81,6 +81,30 @@ async function withTimeout<T>(work: Promise<T>, timeoutMs: number) {
   ]);
 }
 
+async function syncUserSessionState(
+  userId: string,
+  payload: {
+    activeSessionId?: string | null;
+    activeSessionStatus?: "active" | "completed" | "abandoned" | null;
+    activeStoreId?: string | null;
+    sessionExpiresAt?: Timestamp | null;
+  }
+) {
+  await setDoc(
+    doc(db, "users", userId),
+    {
+      activeSessionId: payload.activeSessionId ?? null,
+      activeSessionStatus: payload.activeSessionStatus ?? null,
+      activeStoreId: payload.activeStoreId ?? null,
+      sessionExpiresAt: payload.sessionExpiresAt ?? null,
+      lastSessionActivityAt: serverTimestamp(),
+      isOnline: true,
+      lastSeenAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
+
 function resolveMillis(value: any) {
   if (!value) return null;
   if (value instanceof Timestamp) return value.toMillis();
@@ -301,6 +325,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           expiresAt: Timestamp.fromMillis(expiresAtMs),
           lastActivityAt: serverTimestamp(),
         });
+        await syncUserSessionState(activeSession.userId, {
+          activeSessionId: activeSession.id,
+          activeSessionStatus: activeSession.status,
+          activeStoreId: activeSession.storeId,
+          sessionExpiresAt: Timestamp.fromMillis(expiresAtMs),
+        });
 
         if (cancelled) {
           return;
@@ -350,6 +380,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           },
           { merge: true }
         );
+        await syncUserSessionState(activeSession.userId, {
+          activeSessionId: activeSession.id,
+          activeSessionStatus: activeSession.status,
+          activeStoreId: activeSession.storeId,
+          sessionExpiresAt: Timestamp.fromMillis(expiresAtMs),
+        });
       } catch (error) {
         console.warn("Could not heartbeat session state", error);
       }
@@ -393,6 +429,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         ).catch((error) => {
           console.warn("Could not sync previous session end", error);
         });
+        void syncUserSessionState(activeSession.userId, {
+          activeSessionId: null,
+          activeSessionStatus: null,
+          activeStoreId: null,
+          sessionExpiresAt: null,
+        }).catch((error) => {
+          console.warn("Could not clear previous user session state", error);
+        });
       }
 
       const now = Date.now();
@@ -419,6 +463,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
         lastActivityAt: serverTimestamp(),
       })
+        .then(() => {
+          return syncUserSessionState(user.uid, {
+            activeSessionId: optimisticSession.id,
+            activeSessionStatus: "active",
+            activeStoreId: normalizedStoreId,
+            sessionExpiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
+          });
+        })
         .then(() => {
           setActiveSession((current) => {
             if (!current || current.id !== optimisticSession.id) {
@@ -459,6 +511,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         ),
         8000
       );
+      await syncUserSessionState(activeSession.userId, {
+        activeSessionId: null,
+        activeSessionStatus: null,
+        activeStoreId: null,
+        sessionExpiresAt: null,
+      });
     } finally {
       persistSession(null);
       setActiveSession(null);

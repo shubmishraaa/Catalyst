@@ -12,6 +12,7 @@ export interface CartItem {
   name: string;
   price: number;
   quantity: number;
+  allergens?: string[];
   image?: string | null;
   offer?: {
     discountPercent?: number;

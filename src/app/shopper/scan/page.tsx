@@ -32,7 +32,9 @@ export default function ProductScanner() {
   const { user, profile, loading } = useAuth();
   const { itemCount } = useCart();
 
-  const userAllergens = profile?.allergenAlertsEnabled === false ? [] : profile?.allergens || [];
+  const normalizeAllergen = (value: string) => value.trim().toLowerCase();
+  const alertsEnabled = profile?.allergenAlertsEnabled !== false;
+  const userAllergens = alertsEnabled ? (profile?.allergens || []).map(normalizeAllergen) : [];
 
   useEffect(() => {
     const seedDemoProducts = async () => {
@@ -139,6 +141,13 @@ export default function ProductScanner() {
     }
 
     try {
+      const productAllergens = Array.isArray(product.allergens)
+        ? product.allergens.map((allergen: string) => normalizeAllergen(allergen))
+        : [];
+      const matchingProductAllergens = productAllergens.filter((allergen: string) =>
+        userAllergens.includes(allergen)
+      );
+
       const existingItemQuery = query(
         collection(db, "cartItems"),
         where("sessionId", "==", activeSession.id),
@@ -160,13 +169,27 @@ export default function ProductScanner() {
           name: product.name,
           price: Number(product.price) || 0,
           quantity: 1,
+          allergens: productAllergens,
           image: product.image || null,
           offer: product.offer?.discountPercent ? product.offer : null,
           addedAt: serverTimestamp(),
         });
       }
 
-      toast({ title: "Added to cart", description: `${product.name} added.` });
+      if (alertsEnabled && matchingProductAllergens.length > 0) {
+        toast({
+          title: "Allergen warning",
+          description: `${product.name} matches your saved allergens: ${matchingProductAllergens.join(", ")}.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Added to cart",
+          description: alertsEnabled
+            ? `${product.name} added. No saved allergen match detected.`
+            : `${product.name} added.`,
+        });
+      }
 
       if (closeOverlay) {
         resumeScanner();
@@ -265,7 +288,7 @@ export default function ProductScanner() {
   };
 
   const matchingAllergens = (scannedProduct?.allergens || []).filter((allergen: string) =>
-    userAllergens.includes(allergen.toLowerCase())
+    userAllergens.includes(normalizeAllergen(allergen))
   );
 
   return (
