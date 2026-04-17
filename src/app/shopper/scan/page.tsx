@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Scan, Plus, AlertTriangle, Flashlight, Tag } from "lucide-react";
+import { X, Scan, Plus, AlertTriangle, Flashlight, Tag, Loader2, Square } from "lucide-react";
 import { BottomNav } from "@/components/shopper/BottomNav";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -20,35 +20,46 @@ export default function ProductScanner() {
   const [scannedProduct, setScannedProduct] = useState<any>(null);
   const [scanEvents, setScanEvents] = useState<number[]>([]);
   const [torchOn, setTorchOn] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<"idle" | "starting" | "live" | "blocked" | "unsupported">("idle");
+  const [stoppingSession, setStoppingSession] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<any>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const router = useRouter();
 
   const { toast } = useToast();
-  const { activeSession, loadingSession, elapsedTime } = useSession();
+  const { activeSession, loadingSession, elapsedTime, remainingTime, endSession, sessionBusy } = useSession();
   const { user, profile, loading } = useAuth();
   const { itemCount } = useCart();
 
   const userAllergens = profile?.allergenAlertsEnabled === false ? [] : profile?.allergens || [];
 
   const initScanner = () => {
+    if (!videoRef.current) return;
+
     if (!readerRef.current) {
       readerRef.current = new BrowserMultiFormatReader();
     }
 
+    setCameraStatus("starting");
     readerRef.current.decodeFromConstraints(
       { audio: false, video: { facingMode: "environment" } },
       videoRef.current!,
       (result, _error, controls) => {
         controlsRef.current = controls;
+        setCameraStatus("live");
         if (result) {
           controls.stop();
           if (navigator.vibrate) navigator.vibrate(200);
           processBarcode(result.getText());
         }
       }
-    ).catch((err) => console.warn("Camera Init Error:", err));
+    ).catch((err) => {
+      console.warn("Camera Init Error:", err);
+      setCameraStatus(
+        typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia ? "unsupported" : "blocked"
+      );
+    });
   };
 
   useEffect(() => {
@@ -69,7 +80,9 @@ export default function ProductScanner() {
 
     initScanner();
     return () => {
-      if (controlsRef.current) controlsRef.current.stop();
+      if (controlsRef.current) {
+        controlsRef.current.stop();
+      }
     };
   }, [activeSession, scannedProduct]);
 
@@ -197,10 +210,31 @@ export default function ProductScanner() {
   const resumeScanner = () => {
     setScannedProduct(null);
     setBarcodeInput("");
+    setCameraStatus("idle");
   };
 
   const addToCart = async () => {
     await addProductToCart(scannedProduct, true);
+  };
+
+  const stopSession = async () => {
+    setStoppingSession(true);
+    try {
+      if (controlsRef.current) {
+        controlsRef.current.stop();
+      }
+      await endSession({ status: "abandoned", endReason: "manual" });
+      toast({
+        title: "Session stopped",
+        description: "Your store session has been ended.",
+      });
+      router.replace("/shopper/home");
+    } catch (error) {
+      console.error("Error stopping session", error);
+      toast({ title: "Could not stop session", variant: "destructive" });
+    } finally {
+      setStoppingSession(false);
+    }
   };
 
   const matchingAllergens = (scannedProduct?.allergens || []).filter((allergen: string) =>
@@ -219,10 +253,24 @@ export default function ProductScanner() {
       </div>
 
       <div className="p-6 pt-12 flex justify-between items-center z-20">
-        <h2 className="text-white font-bold text-xl">Scanning...</h2>
-        <div className="bg-primary/20 backdrop-blur-md px-3 py-1 rounded-full border border-primary/30 flex items-center gap-2">
-          <span className="text-white/60 text-xs font-medium">Session Active:</span>
-          <span className="text-primary text-sm font-bold">{elapsedTime}</span>
+        <div>
+          <h2 className="text-white font-bold text-xl">Scanning...</h2>
+          <p className="text-xs text-white/60">Elapsed {elapsedTime} • Remaining {remainingTime}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="bg-primary/20 backdrop-blur-md px-3 py-1 rounded-full border border-primary/30 flex items-center gap-2">
+            <span className="text-white/60 text-xs font-medium">Session Active:</span>
+            <span className="text-primary text-sm font-bold">{elapsedTime}</span>
+          </div>
+          <Button
+            onClick={stopSession}
+            disabled={stoppingSession || sessionBusy}
+            variant="destructive"
+            className="h-10 rounded-xl"
+          >
+            {stoppingSession ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+            <span className="ml-2 hidden sm:inline">Stop Session</span>
+          </Button>
         </div>
       </div>
 
@@ -241,6 +289,16 @@ export default function ProductScanner() {
         <Button onClick={toggleTorch} variant="outline" className="rounded-xl bg-white/10 border-white/20 text-white h-10 w-10 p-0">
           <Flashlight className={cn("h-5 w-5", torchOn && "text-yellow-400")} />
         </Button>
+      </div>
+
+      <div className="px-6 mt-3 z-20">
+        <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80 backdrop-blur">
+          {cameraStatus === "starting" && "Starting camera..."}
+          {cameraStatus === "live" && "Camera is live. Point it at a barcode or use manual entry."}
+          {cameraStatus === "blocked" && "Camera access is blocked. Allow camera access and refresh, or keep using manual barcode entry."}
+          {cameraStatus === "unsupported" && "Camera access is not available here. You can still scan with manual barcode entry."}
+          {cameraStatus === "idle" && "Preparing scanner..."}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center p-6 z-10 pointer-events-none">

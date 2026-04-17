@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 export default function SignupPage() {
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,12 +37,18 @@ export default function SignupPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const normalizedName = fullName.trim();
       const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedName) {
+        throw new Error("Full name is required");
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       const assignedRole = normalizedEmail === "admin@catalyst.com" ? "admin" : "user";
 
       await setDoc(doc(db, "users", userCredential.user.uid), {
         email: normalizedEmail,
+        name: normalizedName,
         role: assignedRole,
         allergens: [],
         allergenAlertsEnabled: true,
@@ -62,6 +69,14 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent className="p-8 pt-4">
           <form onSubmit={handleSignup} className="space-y-4">
+            <Input
+              type="text"
+              placeholder="Full Name"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              className="h-14 rounded-xl border-border bg-muted/20"
+            />
             <Input
               type="email"
               placeholder="Email address"

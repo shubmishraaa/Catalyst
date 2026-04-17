@@ -14,11 +14,15 @@ import { collection, query, where, orderBy, limit, getDocs, doc, setDoc } from "
 
 export default function ShopperHome() {
   const { user, profile, loading } = useAuth();
-  const [userName, setUserName] = useState("Shopper");
   const [recentSessions, setRecentSessions] = useState<any[]>([]);
   const [updatingAlerts, setUpdatingAlerts] = useState(false);
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
   const router = useRouter();
   const { itemCount } = useCart();
+
+  useEffect(() => {
+    setAlertsEnabled(profile?.allergenAlertsEnabled !== false);
+  }, [profile?.allergenAlertsEnabled]);
 
   useEffect(() => {
     if (loading) return;
@@ -27,8 +31,6 @@ export default function ShopperHome() {
       router.replace("/login");
       return;
     }
-
-    setUserName(user.email?.split("@")[0] || "Shopper");
 
     const fetchSessions = async () => {
       try {
@@ -52,6 +54,7 @@ export default function ShopperHome() {
   const toggleAlerts = async (nextValue: boolean) => {
     if (!user) return;
 
+    setAlertsEnabled(nextValue);
     setUpdatingAlerts(true);
     try {
       await setDoc(
@@ -61,6 +64,7 @@ export default function ShopperHome() {
       );
     } catch (err) {
       console.error("Error updating allergen alerts", err);
+      setAlertsEnabled(profile?.allergenAlertsEnabled !== false);
     } finally {
       setUpdatingAlerts(false);
     }
@@ -70,8 +74,8 @@ export default function ShopperHome() {
     <div className="min-h-screen bg-background pb-32">
       <div className="p-6 pt-12 space-y-8 max-w-lg mx-auto">
         <header className="space-y-1">
-          <p className="text-muted-foreground text-sm">Hello,</p>
-          <h1 className="text-3xl font-bold">{userName}</h1>
+          <p className="text-muted-foreground text-sm">Hi,</p>
+          <h1 className="text-3xl font-bold">{profile?.name || "Shopper"}</h1>
         </header>
 
         <section>
@@ -93,7 +97,7 @@ export default function ShopperHome() {
               Dietary Alerts
             </h2>
             <Switch
-              checked={profile?.allergenAlertsEnabled !== false}
+              checked={alertsEnabled}
               disabled={updatingAlerts}
               onCheckedChange={toggleAlerts}
             />
@@ -103,7 +107,7 @@ export default function ShopperHome() {
               <p className="text-sm text-muted-foreground">
                 Allergen warnings are currently{" "}
                 <span className="font-bold text-foreground">
-                  {profile?.allergenAlertsEnabled !== false ? "ON" : "OFF"}
+                  {alertsEnabled ? "ON" : "OFF"}
                 </span>
                 . We only warn when a scanned product matches your saved allergens.
               </p>

@@ -23,7 +23,7 @@ export default function ShopperProfile() {
   const { toast } = useToast();
 
   const allergens = profile?.allergens || [];
-  const userName = user?.email?.split("@")[0] || "Shopper";
+  const userName = profile?.name || "Shopper";
   const email = user?.email || "user@example.com";
 
   const handleToggleAllergen = async (id: string) => {

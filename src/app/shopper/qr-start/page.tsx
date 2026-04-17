@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { X, QrCode } from "lucide-react";
+import { X, QrCode, Camera, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/lib/contexts/SessionContext";
 import { useAuth } from "@/lib/contexts/AuthContext";
@@ -14,9 +14,10 @@ const DEMO_STORES = ["catalyst-express-01", "freshmart-west", "smartbasket-centr
 export default function QRStart() {
   const [scanning, setScanning] = useState(true);
   const [storeIdInput, setStoreIdInput] = useState(DEMO_STORES[0]);
+  const [cameraState, setCameraState] = useState<"idle" | "requesting" | "granted" | "denied" | "unsupported">("idle");
   const router = useRouter();
   const { toast } = useToast();
-  const { startSession } = useSession();
+  const { startSession, sessionBusy } = useSession();
   const { user, loading } = useAuth();
 
   useEffect(() => {
@@ -24,6 +25,32 @@ export default function QRStart() {
       router.replace("/login");
     }
   }, [loading, router, user]);
+
+  const requestCameraAccess = async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setCameraState("unsupported");
+      return;
+    }
+
+    setCameraState("requesting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      setCameraState("granted");
+    } catch (error) {
+      console.warn("Camera permission not granted", error);
+      setCameraState("denied");
+    }
+  };
+
+  useEffect(() => {
+    if (!loading && user && cameraState === "idle") {
+      void requestCameraAccess();
+    }
+  }, [cameraState, loading, user]);
 
   const startStoreSession = async (storeId: string) => {
     setScanning(false);
@@ -88,6 +115,27 @@ export default function QRStart() {
 
       <div className="absolute bottom-20 left-0 right-0 px-10 text-center z-20">
         <p className="text-white/80 mb-8 animate-pulse">Enter the store QR or store ID to start a linked shopping session</p>
+        <div className="mb-4 rounded-3xl bg-white/10 p-4 text-left text-sm text-white/80 backdrop-blur">
+          <div className="flex items-center gap-2 font-medium">
+            {cameraState === "requesting" || sessionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+            <span>
+              {cameraState === "granted" && "Camera access is ready for barcode scanning."}
+              {cameraState === "requesting" && "Requesting camera access..."}
+              {cameraState === "denied" && "Camera access was blocked. You can still start a session and use manual barcode entry."}
+              {cameraState === "unsupported" && "This device/browser does not expose camera access here. Manual barcode entry will still work."}
+              {cameraState === "idle" && "Preparing camera access..."}
+            </span>
+          </div>
+          {cameraState === "denied" ? (
+            <Button
+              onClick={requestCameraAccess}
+              variant="ghost"
+              className="mt-3 h-9 rounded-xl bg-white/10 px-3 text-white hover:bg-white/20"
+            >
+              Allow Camera Again
+            </Button>
+          ) : null}
+        </div>
         <div className="mb-4 rounded-3xl bg-white/10 p-4 backdrop-blur">
           <Input
             value={storeIdInput}
@@ -100,15 +148,15 @@ export default function QRStart() {
           <Button
             onClick={handleManualStart}
             className="w-full h-14 rounded-2xl bg-white text-black hover:bg-white/90 font-bold text-lg"
-            disabled={!scanning || !storeIdInput.trim()}
+            disabled={!scanning || !storeIdInput.trim() || sessionBusy}
           >
-            {scanning ? "Start Session with This Store" : "Starting Session..."}
+            {!scanning || sessionBusy ? "Starting Session..." : "Start Session with This Store"}
           </Button>
           <Button
             onClick={handleRandomStore}
             variant="outline"
             className="w-full h-14 rounded-2xl border-white/20 bg-white/10 text-white hover:bg-white/20"
-            disabled={!scanning}
+            disabled={!scanning || sessionBusy}
           >
             Use Random Demo Store
           </Button>

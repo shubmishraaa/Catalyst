@@ -7,6 +7,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 
 export interface UserProfile {
   email: string;
+  name: string;
   role: "admin" | "user";
   allergens: string[];
   allergenAlertsEnabled: boolean;
@@ -19,6 +20,7 @@ function buildFallbackProfile(usr: FirebaseUser): UserProfile {
 
   return {
     email: normalizedEmail,
+    name: usr.displayName?.trim() || "Shopper",
     role: normalizedEmail === ADMIN_EMAIL ? "admin" : "user",
     allergens: [],
     allergenAlertsEnabled: true,
@@ -73,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const fallbackProfile = buildFallbackProfile(usr);
             const nextProfile: UserProfile = {
               email: data.email || fallbackProfile.email,
+              name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : fallbackProfile.name,
               role: data.role === "admin" || fallbackProfile.role === "admin" ? "admin" : "user",
               allergens: Array.isArray(data.allergens) ? data.allergens : [],
               allergenAlertsEnabled: data.allergenAlertsEnabled !== false,
