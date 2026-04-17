@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { browserSessionPersistence, setPersistence, signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ export default function LoginPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      await setPersistence(auth, browserSessionPersistence);
       await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
     } catch (err: any) {
       toast({ title: "Login Failed", description: err.message, variant: "destructive" });

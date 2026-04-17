@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import { browserSessionPersistence, createUserWithEmailAndPassword, setPersistence } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "@/lib/contexts/AuthContext";
@@ -43,6 +43,7 @@ export default function SignupPage() {
         throw new Error("Full name is required");
       }
 
+      await setPersistence(auth, browserSessionPersistence);
       const userCredential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
       const assignedRole = normalizedEmail === "admin@catalyst.com" ? "admin" : "user";
 

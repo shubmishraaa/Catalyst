@@ -14,49 +14,7 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, 
 import { useSession } from "@/lib/contexts/SessionContext";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
-
-const DEMO_PRODUCTS = [
-  {
-    id: "demo-product-123",
-    barcode: "123",
-    name: "Organic Whole Milk",
-    price: 85,
-    calories: 150,
-    allergens: ["dairy"],
-    offer: { discountPercent: 0 },
-    image: null,
-  },
-  {
-    id: "demo-product-456",
-    barcode: "456",
-    name: "Artisan Sourdough",
-    price: 65,
-    calories: 120,
-    allergens: ["gluten"],
-    offer: null,
-    image: null,
-  },
-  {
-    id: "demo-product-789",
-    barcode: "789",
-    name: "Mixed Roasted Nuts",
-    price: 140,
-    calories: 210,
-    allergens: ["nuts"],
-    offer: { discountPercent: 10 },
-    image: null,
-  },
-  {
-    id: "demo-product-012",
-    barcode: "012",
-    name: "Choco Cookies",
-    price: 55,
-    calories: 180,
-    allergens: ["gluten", "dairy"],
-    offer: null,
-    image: null,
-  },
-];
+import { DEMO_PRODUCTS } from "@/lib/demo-products";
 
 export default function ProductScanner() {
   const [barcodeInput, setBarcodeInput] = useState("");

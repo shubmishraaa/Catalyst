@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc } from "firebase/firestore";
 import { Loader2, Trash2 } from "lucide-react";
+import { DEMO_PRODUCTS } from "@/lib/demo-products";
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -23,6 +24,32 @@ export default function AdminProductsPage() {
   const [discountPercent, setDiscountPercent] = useState("");
 
   useEffect(() => {
+    const seedDemoProducts = async () => {
+      try {
+        await Promise.all(
+          DEMO_PRODUCTS.map((product) =>
+            setDoc(
+              doc(db, "products", product.id),
+              {
+                barcode: product.barcode,
+                name: product.name,
+                price: product.price,
+                calories: product.calories,
+                allergens: product.allergens,
+                offer: product.offer,
+                image: product.image,
+              },
+              { merge: true }
+            )
+          )
+        );
+      } catch (error) {
+        console.warn("Could not seed demo products in admin catalog", error);
+      }
+    };
+
+    void seedDemoProducts();
+
     const unsub = onSnapshot(collection(db, "products"), (snapshot) => {
       setProducts(snapshot.docs.map((productDoc) => ({ id: productDoc.id, ...productDoc.data() })));
     });
