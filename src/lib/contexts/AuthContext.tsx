@@ -12,6 +12,19 @@ export interface UserProfile {
   allergenAlertsEnabled: boolean;
 }
 
+const ADMIN_EMAIL = "admin@catalyst.com";
+
+function buildFallbackProfile(usr: FirebaseUser): UserProfile {
+  const normalizedEmail = usr.email?.trim().toLowerCase() || "";
+
+  return {
+    email: normalizedEmail,
+    role: normalizedEmail === ADMIN_EMAIL ? "admin" : "user",
+    allergens: [],
+    allergenAlertsEnabled: true,
+  };
+}
+
 interface AuthContextType {
   user: FirebaseUser | null;
   role: "admin" | "user" | null;
@@ -50,35 +63,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      setLoading(true);
+
       unsubscribeProfile = onSnapshot(
         doc(db, "users", usr.uid),
         (userDoc) => {
           if (userDoc.exists()) {
             const data = userDoc.data();
+            const fallbackProfile = buildFallbackProfile(usr);
             const nextProfile: UserProfile = {
-              email: data.email || usr.email || "",
-              role: data.role === "admin" ? "admin" : "user",
+              email: data.email || fallbackProfile.email,
+              role: data.role === "admin" || fallbackProfile.role === "admin" ? "admin" : "user",
               allergens: Array.isArray(data.allergens) ? data.allergens : [],
               allergenAlertsEnabled: data.allergenAlertsEnabled !== false,
             };
             setProfile(nextProfile);
             setRole(nextProfile.role);
           } else {
-            const fallbackProfile: UserProfile = {
-              email: usr.email || "",
-              role: "user",
-              allergens: [],
-              allergenAlertsEnabled: true,
-            };
+            const fallbackProfile = buildFallbackProfile(usr);
             setProfile(fallbackProfile);
-            setRole("user");
+            setRole(fallbackProfile.role);
           }
           setLoading(false);
         },
         (e) => {
           console.error("Error fetching user profile", e);
-          setProfile(null);
-          setRole(null);
+          const fallbackProfile = buildFallbackProfile(usr);
+          setProfile(fallbackProfile);
+          setRole(fallbackProfile.role);
           setLoading(false);
         }
       );

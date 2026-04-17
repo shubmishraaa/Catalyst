@@ -17,13 +17,19 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
-  const { role } = useAuth();
+  const { user, role, loading } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (role === "admin") router.replace("/admin/dashboard");
-    else if (role === "user") router.replace("/shopper/home");
-  }, [role, router]);
+    if (loading || !user) return;
+
+    if (role === "admin") {
+      router.replace("/admin/dashboard");
+      return;
+    }
+
+    router.replace("/shopper/home");
+  }, [loading, role, router, user]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
