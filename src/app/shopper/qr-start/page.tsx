@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { X, QrCode, Camera, Loader2 } from "lucide-react";
@@ -15,6 +15,8 @@ export default function QRStart() {
   const [scanning, setScanning] = useState(true);
   const [storeIdInput, setStoreIdInput] = useState(DEMO_STORES[0]);
   const [cameraState, setCameraState] = useState<"idle" | "requesting" | "granted" | "denied" | "unsupported">("idle");
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const router = useRouter();
   const { toast } = useToast();
   const { startSession, sessionBusy } = useSession();
@@ -32,13 +34,24 @@ export default function QRStart() {
       return;
     }
 
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+
     setCameraState("requesting");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
-      stream.getTracks().forEach((track) => track.stop());
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        void videoRef.current.play().catch(() => {});
+      }
+
       setCameraState("granted");
     } catch (error) {
       console.warn("Camera permission not granted", error);
@@ -52,16 +65,34 @@ export default function QRStart() {
     }
   }, [cameraState, loading, user]);
 
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const startSessionWithTimeout = async (storeId: string) => {
+    return Promise.race([
+      startSession(storeId),
+      new Promise<string>((_, reject) => {
+        setTimeout(() => reject(new Error("Session start timed out. Please try again.")), 12000);
+      }),
+    ]);
+  };
+
   const startStoreSession = async (storeId: string) => {
     setScanning(false);
 
     try {
-      await startSession(storeId);
+      const sessionId = await startSessionWithTimeout(storeId);
       toast({
         title: "Store Identified",
         description: `Session started for ${storeId}`,
       });
-      router.push("/shopper/scan");
+      router.push(`/shopper/scan?session=${sessionId}`);
     } catch (err: any) {
       toast({
         title: "Error starting session",
@@ -85,7 +116,17 @@ export default function QRStart() {
   return (
     <div className="min-h-screen bg-black relative flex flex-col items-center justify-center overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/60 z-10" />
-      <div className="absolute inset-0 opacity-20 bg-[url('https://picsum.photos/seed/store/1080/1920')] bg-cover bg-center" />
+      {cameraState === "granted" ? (
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          playsInline
+        />
+      ) : (
+        <div className="absolute inset-0 opacity-20 bg-[url('https://picsum.photos/seed/store/1080/1920')] bg-cover bg-center" />
+      )}
 
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-20">
         <Button
@@ -101,7 +142,7 @@ export default function QRStart() {
       </div>
 
       <div className="relative z-20 w-64 h-64 border-2 border-white/20 rounded-3xl overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/10">
           <QrCode className="h-16 w-16 text-white/40" />
         </div>
 
@@ -119,7 +160,7 @@ export default function QRStart() {
           <div className="flex items-center gap-2 font-medium">
             {cameraState === "requesting" || sessionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             <span>
-              {cameraState === "granted" && "Camera access is ready for barcode scanning."}
+              {cameraState === "granted" && "Camera is live. Align the store QR inside the frame, or start with a demo store below."}
               {cameraState === "requesting" && "Requesting camera access..."}
               {cameraState === "denied" && "Camera access was blocked. You can still start a session and use manual barcode entry."}
               {cameraState === "unsupported" && "This device/browser does not expose camera access here. Manual barcode entry will still work."}
