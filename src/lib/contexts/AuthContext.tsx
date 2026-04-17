@@ -1,9 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
 
 export interface UserProfile {
   email: string;
@@ -11,6 +11,8 @@ export interface UserProfile {
   role: "admin" | "user";
   allergens: string[];
   allergenAlertsEnabled: boolean;
+  isOnline?: boolean;
+  lastSeenAt?: unknown;
 }
 
 const ADMIN_EMAIL = "admin@catalyst.com";
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<"admin" | "user" | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const previousUserRef = useRef<FirebaseUser | null>(null);
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | undefined;
@@ -59,31 +62,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(usr);
 
       if (!usr) {
+        if (previousUserRef.current) {
+          void setDoc(
+            doc(db, "users", previousUserRef.current.uid),
+            {
+              isOnline: false,
+              lastSeenAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch((error) => {
+            console.warn("Could not update user offline presence", error);
+          });
+        }
+
+        previousUserRef.current = null;
         setRole(null);
         setProfile(null);
         setLoading(false);
         return;
       }
 
+      previousUserRef.current = usr;
       setLoading(true);
+      const fallbackProfile = buildFallbackProfile(usr);
+
+      void setDoc(
+        doc(db, "users", usr.uid),
+        {
+          email: fallbackProfile.email,
+          name: fallbackProfile.name,
+          role: fallbackProfile.role,
+          isOnline: true,
+          lastSeenAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch((error) => {
+        console.warn("Could not update user online presence", error);
+      });
 
       unsubscribeProfile = onSnapshot(
         doc(db, "users", usr.uid),
         (userDoc) => {
           if (userDoc.exists()) {
             const data = userDoc.data();
-            const fallbackProfile = buildFallbackProfile(usr);
             const nextProfile: UserProfile = {
               email: data.email || fallbackProfile.email,
               name: typeof data.name === "string" && data.name.trim() ? data.name.trim() : fallbackProfile.name,
               role: data.role === "admin" || fallbackProfile.role === "admin" ? "admin" : "user",
               allergens: Array.isArray(data.allergens) ? data.allergens : [],
               allergenAlertsEnabled: data.allergenAlertsEnabled !== false,
+              isOnline: data.isOnline === true,
+              lastSeenAt: data.lastSeenAt,
             };
             setProfile(nextProfile);
             setRole(nextProfile.role);
           } else {
-            const fallbackProfile = buildFallbackProfile(usr);
             setProfile(fallbackProfile);
             setRole(fallbackProfile.role);
           }

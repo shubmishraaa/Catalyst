@@ -34,10 +34,12 @@ interface CartSummary {
 interface UserRecord {
   name?: string;
   email?: string;
+  isOnline?: boolean;
 }
 
 export default function AdminDashboardPage() {
   const [activeSessionsCount, setActiveSessionsCount] = useState(0);
+  const [activeUsersCount, setActiveUsersCount] = useState(0);
   const [flagsCount, setFlagsCount] = useState(0);
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [totalUsersToday, setTotalUsersToday] = useState(0);
@@ -140,6 +142,9 @@ export default function AdminDashboardPage() {
         }, {});
 
         setUsersById(nextUsers);
+        setActiveUsersCount(
+          Object.values(nextUsers).filter((userRecord) => userRecord.isOnline === true).length
+        );
       }
     );
 
@@ -153,6 +158,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   const stats = [
+    { label: "Active Users", value: activeUsersCount, icon: Users, color: "text-sky-600", bg: "bg-sky-500/10" },
     { label: "Active Sessions", value: activeSessionsCount, icon: Users, color: "text-primary", bg: "bg-primary/10" },
     { label: "Revenue", value: `Rs. ${totalRevenue.toLocaleString()}`, icon: IndianRupee, color: "text-accent", bg: "bg-accent/10" },
     { label: "Security Flags", value: flagsCount, icon: AlertCircle, color: "text-destructive", bg: "bg-destructive/10" },

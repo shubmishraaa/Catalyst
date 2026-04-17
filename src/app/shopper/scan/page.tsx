@@ -4,22 +4,64 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Scan, Plus, AlertTriangle, Flashlight, Tag, Loader2, Square } from "lucide-react";
+import { X, Plus, AlertTriangle, Tag, Loader2, Square, ArrowRight } from "lucide-react";
 import { BottomNav } from "@/components/shopper/BottomNav";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, serverTimestamp, updateDoc, doc, setDoc } from "firebase/firestore";
 import { useSession } from "@/lib/contexts/SessionContext";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
+
+const DEMO_PRODUCTS = [
+  {
+    id: "demo-product-123",
+    barcode: "123",
+    name: "Organic Whole Milk",
+    price: 85,
+    calories: 150,
+    allergens: ["dairy"],
+    offer: { discountPercent: 0 },
+    image: null,
+  },
+  {
+    id: "demo-product-456",
+    barcode: "456",
+    name: "Artisan Sourdough",
+    price: 65,
+    calories: 120,
+    allergens: ["gluten"],
+    offer: null,
+    image: null,
+  },
+  {
+    id: "demo-product-789",
+    barcode: "789",
+    name: "Mixed Roasted Nuts",
+    price: 140,
+    calories: 210,
+    allergens: ["nuts"],
+    offer: { discountPercent: 10 },
+    image: null,
+  },
+  {
+    id: "demo-product-012",
+    barcode: "012",
+    name: "Choco Cookies",
+    price: 55,
+    calories: 180,
+    allergens: ["gluten", "dairy"],
+    offer: null,
+    image: null,
+  },
+];
 
 export default function ProductScanner() {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [scannedProduct, setScannedProduct] = useState<any>(null);
   const [scanEvents, setScanEvents] = useState<number[]>([]);
-  const [torchOn, setTorchOn] = useState(false);
   const [cameraStatus, setCameraStatus] = useState<"idle" | "starting" | "live" | "blocked" | "unsupported">("idle");
   const [stoppingSession, setStoppingSession] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -33,6 +75,34 @@ export default function ProductScanner() {
   const { itemCount } = useCart();
 
   const userAllergens = profile?.allergenAlertsEnabled === false ? [] : profile?.allergens || [];
+
+  useEffect(() => {
+    const seedDemoProducts = async () => {
+      try {
+        await Promise.all(
+          DEMO_PRODUCTS.map((product) =>
+            setDoc(
+              doc(db, "products", product.id),
+              {
+                barcode: product.barcode,
+                name: product.name,
+                price: product.price,
+                calories: product.calories,
+                allergens: product.allergens,
+                offer: product.offer,
+                image: product.image,
+              },
+              { merge: true }
+            )
+          )
+        );
+      } catch (error) {
+        console.warn("Could not seed demo products", error);
+      }
+    };
+
+    void seedDemoProducts();
+  }, []);
 
   const initScanner = () => {
     if (!videoRef.current) return;
@@ -85,19 +155,6 @@ export default function ProductScanner() {
       }
     };
   }, [activeSession, scannedProduct]);
-
-  const toggleTorch = async () => {
-    try {
-      // @ts-expect-error Torch support is device-specific and not present in DOM typings.
-      const track = videoRef.current?.srcObject?.getTracks()[0];
-      if (track) {
-        await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
-        setTorchOn(!torchOn);
-      }
-    } catch (_err) {
-      toast({ title: "Flashlight not supported", variant: "destructive" });
-    }
-  };
 
   const createFlag = async (reason: string, severity: "low" | "medium" | "high") => {
     if (!activeSession) return;
@@ -187,9 +244,21 @@ export default function ProductScanner() {
       const q = query(collection(db, "products"), where("barcode", "==", normalizedCode));
       const snap = await getDocs(q);
       if (snap.empty) {
-        toast({ title: "Product not found", variant: "destructive" });
-        setBarcodeInput("");
-        initScanner();
+        const fallbackProduct = DEMO_PRODUCTS.find((product) => product.barcode === normalizedCode);
+        if (!fallbackProduct) {
+          toast({ title: "Product not found", variant: "destructive" });
+          setBarcodeInput("");
+          initScanner();
+          return;
+        }
+
+        const added = await addProductToCart(fallbackProduct);
+        if (added) {
+          setScannedProduct(fallbackProduct);
+          setBarcodeInput("");
+        } else {
+          initScanner();
+        }
       } else {
         const product = { id: snap.docs[0].id, ...snap.docs[0].data() };
         const added = await addProductToCart(product);
@@ -283,12 +352,9 @@ export default function ProductScanner() {
             className="bg-white/10 border-white/20 text-white rounded-xl placeholder:text-white/40"
           />
           <Button type="submit" variant="secondary" className="rounded-xl h-10 w-10 p-0">
-            <Scan className="h-5 w-5" />
+            <ArrowRight className="h-5 w-5" />
           </Button>
         </form>
-        <Button onClick={toggleTorch} variant="outline" className="rounded-xl bg-white/10 border-white/20 text-white h-10 w-10 p-0">
-          <Flashlight className={cn("h-5 w-5", torchOn && "text-yellow-400")} />
-        </Button>
       </div>
 
       <div className="px-6 mt-3 z-20">

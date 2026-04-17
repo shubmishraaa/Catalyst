@@ -52,7 +52,9 @@ export default function SignupPage() {
         role: assignedRole,
         allergens: [],
         allergenAlertsEnabled: true,
+        isOnline: true,
         createdAt: serverTimestamp(),
+        lastSeenAt: serverTimestamp(),
       });
     } catch (err: any) {
       toast({ title: "Signup Failed", description: err.message, variant: "destructive" });

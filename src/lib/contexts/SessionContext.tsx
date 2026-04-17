@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp, getDoc } from "firebase/firestore";
 import { useAuth } from "./AuthContext";
@@ -119,6 +119,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [sessionBusy, setSessionBusy] = useState(false);
   const [elapsedTime, setElapsedTime] = useState("00:00");
   const [remainingTime, setRemainingTime] = useState("01:30:00");
+  const syncingLocalSessionRef = useRef(false);
 
   useEffect(() => {
     const restoreSession = async () => {
@@ -233,6 +234,66 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [activeSession]);
 
+  useEffect(() => {
+    if (!user || !activeSession || !activeSession.id.startsWith("local-") || syncingLocalSessionRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const syncSession = async () => {
+      syncingLocalSessionRef.current = true;
+
+      try {
+        const createdAtMs = resolveMillis(activeSession.createdAt) ?? Date.now();
+        const expiresAtMs = resolveMillis(activeSession.expiresAt) ?? createdAtMs + MAX_SESSION_DURATION_MS;
+        const docRef = await addDoc(collection(db, "sessions"), {
+          userId: activeSession.userId,
+          storeId: activeSession.storeId,
+          status: activeSession.status,
+          createdAt: Timestamp.fromMillis(createdAtMs),
+          expiresAt: Timestamp.fromMillis(expiresAtMs),
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const syncedSession: SessionData = {
+          ...activeSession,
+          id: docRef.id,
+        };
+
+        setActiveSession((current) => {
+          if (!current || current.id !== activeSession.id) {
+            return current;
+          }
+
+          persistSession(syncedSession);
+          return syncedSession;
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("Retrying local session sync", error);
+        }
+      } finally {
+        syncingLocalSessionRef.current = false;
+      }
+    };
+
+    void syncSession();
+    const retryTimer = setInterval(() => {
+      if (!syncingLocalSessionRef.current) {
+        void syncSession();
+      }
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(retryTimer);
+    };
+  }, [activeSession, user]);
+
   const startSession = async (storeId: string) => {
     if (!user) throw new Error("Must be logged in");
 
@@ -275,16 +336,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setRemainingTime("01:30:00");
       persistSession(optimisticSession);
 
-      void withTimeout(
-        addDoc(collection(db, "sessions"), {
-          userId: user.uid,
-          storeId: normalizedStoreId,
-          status: "active",
-          createdAt: serverTimestamp(),
-          expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
-        }),
-        8000
-      )
+      void addDoc(collection(db, "sessions"), {
+        userId: user.uid,
+        storeId: normalizedStoreId,
+        status: "active",
+        createdAt: serverTimestamp(),
+        expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
+      })
         .then((docRef) => {
           const syncedSession: SessionData = {
             ...optimisticSession,
@@ -299,7 +357,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           });
         })
         .catch((error) => {
-          console.warn("Session running in local fallback mode", error);
+          console.warn("Session sync is still pending or unavailable", error);
         });
 
       return optimisticSession.id;
