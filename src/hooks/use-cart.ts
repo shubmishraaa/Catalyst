@@ -26,9 +26,10 @@ export function useCart() {
   const { activeSession } = useSession();
   const [items, setItems] = useState<CartItem[]>([]);
   const [loadingCart, setLoadingCart] = useState(true);
+  const activeSessionId = activeSession?.id;
 
   useEffect(() => {
-    if (!activeSession) {
+    if (!activeSessionId) {
       setItems([]);
       setLoadingCart(false);
       return;
@@ -37,7 +38,7 @@ export function useCart() {
     setLoadingCart(true);
     const cartQuery = query(
       collection(db, "cartItems"),
-      where("sessionId", "==", activeSession.id)
+      where("sessionId", "==", activeSessionId)
     );
 
     const unsubscribe = onSnapshot(
@@ -57,7 +58,7 @@ export function useCart() {
     );
 
     return () => unsubscribe();
-  }, [activeSession]);
+  }, [activeSessionId]);
 
   const itemCount = items.reduce((acc, item) => acc + (Number(item.quantity) || 0), 0);
   const subtotal = items.reduce((acc, item) => acc + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);

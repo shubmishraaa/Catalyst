@@ -138,7 +138,7 @@ const SessionContext = createContext<SessionContextType>({
 });
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [activeSession, setActiveSession] = useState<SessionData | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [sessionBusy, setSessionBusy] = useState(false);
@@ -148,8 +148,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const restoreSession = async () => {
+      if (loading) {
+        return;
+      }
+
       if (!user) {
-        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+        persistSession(null);
         setActiveSession(null);
         setLoadingSession(false);
         return;
@@ -232,7 +236,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
 
     restoreSession();
-  }, [user]);
+  }, [loading, user]);
 
   useEffect(() => {
     if (!user || !activeSession?.id) {
