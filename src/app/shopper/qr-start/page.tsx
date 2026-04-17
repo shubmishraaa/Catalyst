@@ -8,6 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/lib/contexts/SessionContext";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
+import { SessionBanner } from "@/components/shopper/SessionBanner";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 
 const DEMO_STORES = ["catalyst-express-01", "freshmart-west", "smartbasket-central"];
 
@@ -17,6 +19,9 @@ export default function QRStart() {
   const [cameraState, setCameraState] = useState<"idle" | "requesting" | "granted" | "denied" | "unsupported">("idle");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const controlsRef = useRef<any>(null);
+  const startingSessionRef = useRef(false);
   const router = useRouter();
   const { toast } = useToast();
   const { startSession, sessionBusy } = useSession();
@@ -65,8 +70,61 @@ export default function QRStart() {
     }
   }, [cameraState, loading, user]);
 
+  const stopScanner = () => {
+    if (controlsRef.current) {
+      controlsRef.current.stop();
+      controlsRef.current = null;
+    }
+  };
+
+  const beginStoreScanner = () => {
+    if (!videoRef.current || cameraState !== "granted" || !scanning || startingSessionRef.current) {
+      return;
+    }
+
+    if (!readerRef.current) {
+      readerRef.current = new BrowserMultiFormatReader();
+    }
+
+    readerRef.current
+      .decodeFromConstraints(
+        { audio: false, video: { facingMode: "environment" } },
+        videoRef.current,
+        (result, _error, controls) => {
+          controlsRef.current = controls;
+          if (!result || startingSessionRef.current) {
+            return;
+          }
+
+          startingSessionRef.current = true;
+          controls.stop();
+          const scannedStoreId = result.getText().trim();
+          setStoreIdInput(scannedStoreId);
+          void startStoreSession(scannedStoreId).finally(() => {
+            startingSessionRef.current = false;
+          });
+        }
+      )
+      .catch((error) => {
+        console.warn("Store QR scanner failed to start", error);
+      });
+  };
+
+  useEffect(() => {
+    if (cameraState !== "granted" || !scanning) {
+      stopScanner();
+      return;
+    }
+
+    beginStoreScanner();
+    return () => {
+      stopScanner();
+    };
+  }, [cameraState, scanning]);
+
   useEffect(() => {
     return () => {
+      stopScanner();
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -84,13 +142,19 @@ export default function QRStart() {
   };
 
   const startStoreSession = async (storeId: string) => {
+    const normalizedStoreId = storeId.trim();
+    if (!normalizedStoreId) {
+      throw new Error("Store ID is required");
+    }
+
     setScanning(false);
+    stopScanner();
 
     try {
-      const sessionId = await startSessionWithTimeout(storeId);
+      const sessionId = await startSessionWithTimeout(normalizedStoreId);
       toast({
         title: "Store Identified",
-        description: `Session started for ${storeId}`,
+        description: `Session started for ${normalizedStoreId}`,
       });
       router.push(`/shopper/scan?session=${sessionId}`);
     } catch (err: any) {
@@ -158,6 +222,9 @@ export default function QRStart() {
       </div>
 
       <div className="absolute bottom-20 left-0 right-0 px-10 text-center z-20">
+        <div className="mb-4">
+          <SessionBanner dark />
+        </div>
         <p className="text-white/80 mb-8 animate-pulse">Enter the store QR or store ID to start a linked shopping session</p>
         <div className="mb-4 rounded-3xl bg-white/10 p-4 text-left text-sm text-white/80 backdrop-blur">
           <div className="flex items-center gap-2 font-medium">

@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { SessionBanner } from "@/components/shopper/SessionBanner";
 
 function CheckoutContent() {
   const [status, setStatus] = useState<"pending" | "returned" | "success">("pending");
@@ -178,6 +179,7 @@ function CheckoutContent() {
   return (
     <div className="min-h-screen bg-background p-6 pt-12">
       <div className="max-w-lg mx-auto space-y-8">
+        <SessionBanner />
         <header className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
             <ArrowLeft className="h-6 w-6" />

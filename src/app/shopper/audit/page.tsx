@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { CheckCircle2, Package, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SessionBanner } from "@/components/shopper/SessionBanner";
 
 export default function ExitAudit() {
   const [confirmed, setConfirmed] = useState(false);
@@ -31,6 +32,7 @@ export default function ExitAudit() {
   return (
     <div className="min-h-screen bg-background flex flex-col p-6 pt-20">
       <div className="max-w-lg mx-auto w-full space-y-8">
+        <SessionBanner />
         <div className="text-center space-y-4">
           <div className="bg-accent/10 w-fit p-4 rounded-full mx-auto">
             <Search className="h-12 w-12 text-accent" />

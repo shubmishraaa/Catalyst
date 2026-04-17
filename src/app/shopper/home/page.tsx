@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
 import { db } from "@/lib/firebase";
 import { collection, query, where, orderBy, limit, getDocs, doc, setDoc } from "firebase/firestore";
+import { SessionBanner } from "@/components/shopper/SessionBanner";
 
 export default function ShopperHome() {
   const { user, profile, loading } = useAuth();
@@ -73,6 +74,7 @@ export default function ShopperHome() {
   return (
     <div className="min-h-screen bg-background pb-32">
       <div className="p-6 pt-12 space-y-8 max-w-lg mx-auto">
+        <SessionBanner />
         <header className="space-y-1">
           <p className="text-muted-foreground text-sm">Hi,</p>
           <h1 className="text-3xl font-bold">{profile?.name || "Shopper"}</h1>

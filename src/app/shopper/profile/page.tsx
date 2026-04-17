@@ -14,6 +14,7 @@ import { useCart } from "@/hooks/use-cart";
 import { auth, db } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
+import { SessionBanner } from "@/components/shopper/SessionBanner";
 
 export default function ShopperProfile() {
   const { user, profile } = useAuth();
@@ -60,6 +61,7 @@ export default function ShopperProfile() {
   return (
     <div className="min-h-screen bg-background pb-32">
       <div className="p-6 pt-12 max-w-lg mx-auto space-y-8">
+        <SessionBanner />
         <header className="flex items-center gap-4">
           <div className="h-20 w-20 rounded-3xl bg-primary/20 flex items-center justify-center">
             <User className="h-10 w-10 text-primary" />

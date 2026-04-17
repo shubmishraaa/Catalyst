@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, updateDoc, Timestamp, getDoc } from "firebase/firestore";
+import { serverTimestamp, doc, updateDoc, Timestamp, getDoc, setDoc } from "firebase/firestore";
 import { useAuth } from "./AuthContext";
 
 export interface SessionData {
@@ -247,7 +247,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       try {
         const createdAtMs = resolveMillis(activeSession.createdAt) ?? Date.now();
         const expiresAtMs = resolveMillis(activeSession.expiresAt) ?? createdAtMs + MAX_SESSION_DURATION_MS;
-        const docRef = await addDoc(collection(db, "sessions"), {
+        await setDoc(doc(db, "sessions", activeSession.id), {
           userId: activeSession.userId,
           storeId: activeSession.storeId,
           status: activeSession.status,
@@ -258,20 +258,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) {
           return;
         }
-
-        const syncedSession: SessionData = {
-          ...activeSession,
-          id: docRef.id,
-        };
-
-        setActiveSession((current) => {
-          if (!current || current.id !== activeSession.id) {
-            return current;
-          }
-
-          persistSession(syncedSession);
-          return syncedSession;
-        });
+        persistSession(activeSession);
       } catch (error) {
         if (!cancelled) {
           console.warn("Retrying local session sync", error);
@@ -336,24 +323,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setRemainingTime("01:30:00");
       persistSession(optimisticSession);
 
-      void addDoc(collection(db, "sessions"), {
+      void setDoc(doc(db, "sessions", optimisticSession.id), {
         userId: user.uid,
         storeId: normalizedStoreId,
         status: "active",
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
       })
-        .then((docRef) => {
-          const syncedSession: SessionData = {
-            ...optimisticSession,
-            id: docRef.id,
-          };
+        .then(() => {
           setActiveSession((current) => {
             if (!current || current.id !== optimisticSession.id) {
               return current;
             }
-            persistSession(syncedSession);
-            return syncedSession;
+            persistSession(optimisticSession);
+            return optimisticSession;
           });
         })
         .catch((error) => {

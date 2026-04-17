@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { SessionBanner } from "@/components/shopper/SessionBanner";
 
 export default function Cart() {
   const { activeSession, loadingSession } = useSession();
@@ -76,6 +77,7 @@ export default function Cart() {
   return (
     <div className="min-h-screen bg-background pb-40">
       <div className="p-6 pt-12 max-w-lg mx-auto space-y-8">
+        <SessionBanner />
         <header className="flex justify-between items-end">
           <div className="space-y-1">
             <h1 className="text-3xl font-bold">Your Cart</h1>
