@@ -38,6 +38,48 @@ interface SessionContextType {
 const ACTIVE_SESSION_STORAGE_KEY = "catalyst-active-session-id";
 const MAX_SESSION_DURATION_MS = 90 * 60 * 1000;
 
+function createLocalSessionId() {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function persistSession(session: SessionData | null) {
+  if (typeof window === "undefined") return;
+
+  if (!session) {
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    return;
+  }
+
+  localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+function readStoredSession() {
+  if (typeof window === "undefined") return null;
+
+  const rawValue = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+  if (!rawValue) return null;
+
+  if (rawValue.startsWith("{")) {
+    try {
+      return JSON.parse(rawValue) as SessionData;
+    } catch {
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      return null;
+    }
+  }
+
+  return rawValue;
+}
+
+async function withTimeout<T>(work: Promise<T>, timeoutMs: number) {
+  return Promise.race([
+    work,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error("Request timed out")), timeoutMs);
+    }),
+  ]);
+}
+
 function resolveMillis(value: any) {
   if (!value) return null;
   if (value instanceof Timestamp) return value.toMillis();
@@ -88,27 +130,45 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
 
       setLoadingSession(true);
-      const storedSessionId = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+      const storedSession = readStoredSession();
 
-      if (!storedSessionId) {
+      if (!storedSession) {
+        setActiveSession(null);
+        setLoadingSession(false);
+        return;
+      }
+
+      if (typeof storedSession !== "string") {
+        const expiresAtMs = resolveMillis(storedSession.expiresAt);
+        if (
+          storedSession.userId === user.uid &&
+          storedSession.status === "active" &&
+          (!expiresAtMs || Date.now() < expiresAtMs)
+        ) {
+          setActiveSession(storedSession);
+          setLoadingSession(false);
+          return;
+        }
+
+        persistSession(null);
         setActiveSession(null);
         setLoadingSession(false);
         return;
       }
 
       try {
-        const sessionRef = doc(db, "sessions", storedSessionId);
+        const sessionRef = doc(db, "sessions", storedSession);
         const sessionSnap = await getDoc(sessionRef);
 
         if (!sessionSnap.exists()) {
-          localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+          persistSession(null);
           setActiveSession(null);
           return;
         }
 
         const data = sessionSnap.data();
         if (data.userId !== user.uid || data.status !== "active") {
-          localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+          persistSession(null);
           setActiveSession(null);
           return;
         }
@@ -120,18 +180,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             completedAt: serverTimestamp(),
             endReason: "timeout",
           });
-          localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+          persistSession(null);
           setActiveSession(null);
           return;
         }
 
-        setActiveSession({
+        const restoredSession = {
           id: sessionSnap.id,
           ...(data as Omit<SessionData, "id">),
-        });
+        };
+        setActiveSession(restoredSession);
+        persistSession(restoredSession);
       } catch (e) {
         console.error("Error restoring session", e);
-        localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+        persistSession(null);
         setActiveSession(null);
       } finally {
         setLoadingSession(false);
@@ -183,28 +245,24 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     try {
       if (activeSession?.status === "active") {
         if (activeSession.storeId === normalizedStoreId) {
-          localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, activeSession.id);
+          persistSession(activeSession);
           return activeSession.id;
         }
 
-        await updateDoc(doc(db, "sessions", activeSession.id), {
-          status: "abandoned",
-          completedAt: serverTimestamp(),
-          endReason: "switch_store",
-        });
+        if (!activeSession.id.startsWith("local-")) {
+          void updateDoc(doc(db, "sessions", activeSession.id), {
+            status: "abandoned",
+            completedAt: serverTimestamp(),
+            endReason: "switch_store",
+          }).catch((error) => {
+            console.warn("Could not sync previous session end", error);
+          });
+        }
       }
 
       const now = Date.now();
-      const docRef = await addDoc(collection(db, "sessions"), {
-        userId: user.uid,
-        storeId: normalizedStoreId,
-        status: "active",
-        createdAt: serverTimestamp(),
-        expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
-      });
-
-      const newSession: SessionData = {
-        id: docRef.id,
+      const optimisticSession: SessionData = {
+        id: createLocalSessionId(),
         userId: user.uid,
         storeId: normalizedStoreId,
         status: "active",
@@ -212,11 +270,39 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         expiresAt: { seconds: Math.floor((now + MAX_SESSION_DURATION_MS) / 1000) },
       };
 
-      setActiveSession(newSession);
+      setActiveSession(optimisticSession);
       setElapsedTime("00:00");
       setRemainingTime("01:30:00");
-      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, docRef.id);
-      return docRef.id;
+      persistSession(optimisticSession);
+
+      void withTimeout(
+        addDoc(collection(db, "sessions"), {
+          userId: user.uid,
+          storeId: normalizedStoreId,
+          status: "active",
+          createdAt: serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
+        }),
+        8000
+      )
+        .then((docRef) => {
+          const syncedSession: SessionData = {
+            ...optimisticSession,
+            id: docRef.id,
+          };
+          setActiveSession((current) => {
+            if (!current || current.id !== optimisticSession.id) {
+              return current;
+            }
+            persistSession(syncedSession);
+            return syncedSession;
+          });
+        })
+        .catch((error) => {
+          console.warn("Session running in local fallback mode", error);
+        });
+
+      return optimisticSession.id;
     } finally {
       setSessionBusy(false);
     }
@@ -227,16 +313,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setSessionBusy(true);
     try {
-      await updateDoc(doc(db, "sessions", activeSession.id), {
-        status: completion?.status ?? "completed",
-        completedAt: serverTimestamp(),
-        totalAmount: completion?.totalAmount ?? 0,
-        transactionId: completion?.transactionId ?? null,
-        auditStatus: completion?.auditStatus ?? "not_required",
-        endReason: completion?.endReason ?? "checkout",
-      });
+      if (!activeSession.id.startsWith("local-")) {
+        await withTimeout(
+          updateDoc(doc(db, "sessions", activeSession.id), {
+            status: completion?.status ?? "completed",
+            completedAt: serverTimestamp(),
+            totalAmount: completion?.totalAmount ?? 0,
+            transactionId: completion?.transactionId ?? null,
+            auditStatus: completion?.auditStatus ?? "not_required",
+            endReason: completion?.endReason ?? "checkout",
+          }),
+          8000
+        );
+      }
     } finally {
-      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      persistSession(null);
       setActiveSession(null);
       setSessionBusy(false);
     }

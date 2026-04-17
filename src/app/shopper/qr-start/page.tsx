@@ -116,17 +116,7 @@ export default function QRStart() {
   return (
     <div className="min-h-screen bg-black relative flex flex-col items-center justify-center overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/60 z-10" />
-      {cameraState === "granted" ? (
-        <video
-          ref={videoRef}
-          className="absolute inset-0 h-full w-full object-cover"
-          autoPlay
-          muted
-          playsInline
-        />
-      ) : (
-        <div className="absolute inset-0 opacity-20 bg-[url('https://picsum.photos/seed/store/1080/1920')] bg-cover bg-center" />
-      )}
+      <div className="absolute inset-0 opacity-20 bg-[url('https://picsum.photos/seed/store/1080/1920')] bg-cover bg-center" />
 
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-20">
         <Button
@@ -142,9 +132,20 @@ export default function QRStart() {
       </div>
 
       <div className="relative z-20 w-64 h-64 border-2 border-white/20 rounded-3xl overflow-hidden">
-        <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-          <QrCode className="h-16 w-16 text-white/40" />
-        </div>
+        {cameraState === "granted" ? (
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            autoPlay
+            muted
+            playsInline
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+            <QrCode className="h-16 w-16 text-white/40" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-black/10" />
 
         {scanning && <div className="absolute left-0 right-0 h-1 bg-primary/80 shadow-[0_0_15px_hsl(var(--primary))] scan-beam z-30" />}
 
