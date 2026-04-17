@@ -140,6 +140,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const heartbeatPresence = async () => {
+      try {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            isOnline: true,
+            lastSeenAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.warn("Could not refresh user presence heartbeat", error);
+      }
+    };
+
+    void heartbeatPresence();
+    const heartbeatInterval = setInterval(() => {
+      void heartbeatPresence();
+    }, 15000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void heartbeatPresence();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user]);
+
   return (
     <AuthContext.Provider value={{ user, role, profile, loading }}>
       {children}

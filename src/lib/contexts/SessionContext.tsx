@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
-import { serverTimestamp, doc, updateDoc, Timestamp, getDoc, setDoc } from "firebase/firestore";
+import { onSnapshot, serverTimestamp, doc, Timestamp, getDoc, setDoc } from "firebase/firestore";
 import { useAuth } from "./AuthContext";
 
 export interface SessionData {
@@ -12,6 +12,7 @@ export interface SessionData {
   status: "active" | "completed" | "abandoned";
   createdAt: any;
   expiresAt?: any;
+  lastActivityAt?: any;
   totalAmount?: number;
   transactionId?: string;
   auditStatus?: "not_required" | "pending" | "completed";
@@ -38,8 +39,8 @@ interface SessionContextType {
 const ACTIVE_SESSION_STORAGE_KEY = "catalyst-active-session-id";
 const MAX_SESSION_DURATION_MS = 90 * 60 * 1000;
 
-function createLocalSessionId() {
-  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function createSessionId() {
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function persistSession(session: SessionData | null) {
@@ -176,11 +177,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         const expiresAtMs = resolveMillis(data.expiresAt);
         if (expiresAtMs && Date.now() >= expiresAtMs) {
-          await updateDoc(sessionRef, {
-            status: "abandoned",
-            completedAt: serverTimestamp(),
-            endReason: "timeout",
-          });
+          await setDoc(
+            sessionRef,
+            {
+              status: "abandoned",
+              completedAt: serverTimestamp(),
+              endReason: "timeout",
+              lastActivityAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
           persistSession(null);
           setActiveSession(null);
           return;
@@ -203,6 +209,46 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     restoreSession();
   }, [user]);
+
+  useEffect(() => {
+    if (!user || !activeSession?.id) {
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      doc(db, "sessions", activeSession.id),
+      (sessionDoc) => {
+        if (!sessionDoc.exists()) {
+          return;
+        }
+
+        const data = sessionDoc.data();
+        if (data.userId !== user.uid) {
+          return;
+        }
+
+        const nextSession: SessionData = {
+          id: sessionDoc.id,
+          ...(data as Omit<SessionData, "id">),
+        };
+
+        const expiresAtMs = resolveMillis(nextSession.expiresAt);
+        if (nextSession.status !== "active" || (expiresAtMs && Date.now() >= expiresAtMs)) {
+          persistSession(null);
+          setActiveSession(null);
+          return;
+        }
+
+        setActiveSession(nextSession);
+        persistSession(nextSession);
+      },
+      (error) => {
+        console.warn("Error subscribing to active session", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [activeSession?.id, user]);
 
   useEffect(() => {
     if (!activeSession?.createdAt) {
@@ -235,7 +281,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [activeSession]);
 
   useEffect(() => {
-    if (!user || !activeSession || !activeSession.id.startsWith("local-") || syncingLocalSessionRef.current) {
+    if (!user || !activeSession || syncingLocalSessionRef.current) {
       return;
     }
 
@@ -253,6 +299,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           status: activeSession.status,
           createdAt: Timestamp.fromMillis(createdAtMs),
           expiresAt: Timestamp.fromMillis(expiresAtMs),
+          lastActivityAt: serverTimestamp(),
         });
 
         if (cancelled) {
@@ -281,6 +328,43 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [activeSession, user]);
 
+  useEffect(() => {
+    if (!user || !activeSession) {
+      return;
+    }
+
+    const heartbeat = async () => {
+      const createdAtMs = resolveMillis(activeSession.createdAt) ?? Date.now();
+      const expiresAtMs = resolveMillis(activeSession.expiresAt) ?? createdAtMs + MAX_SESSION_DURATION_MS;
+
+      try {
+        await setDoc(
+          doc(db, "sessions", activeSession.id),
+          {
+            userId: activeSession.userId,
+            storeId: activeSession.storeId,
+            status: activeSession.status,
+            createdAt: Timestamp.fromMillis(createdAtMs),
+            expiresAt: Timestamp.fromMillis(expiresAtMs),
+            lastActivityAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.warn("Could not heartbeat session state", error);
+      }
+    };
+
+    void heartbeat();
+    const heartbeatInterval = setInterval(() => {
+      void heartbeat();
+    }, 15000);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+    };
+  }, [activeSession, user]);
+
   const startSession = async (storeId: string) => {
     if (!user) throw new Error("Must be logged in");
 
@@ -297,25 +381,29 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           return activeSession.id;
         }
 
-        if (!activeSession.id.startsWith("local-")) {
-          void updateDoc(doc(db, "sessions", activeSession.id), {
+        void setDoc(
+          doc(db, "sessions", activeSession.id),
+          {
             status: "abandoned",
             completedAt: serverTimestamp(),
             endReason: "switch_store",
-          }).catch((error) => {
-            console.warn("Could not sync previous session end", error);
-          });
-        }
+            lastActivityAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch((error) => {
+          console.warn("Could not sync previous session end", error);
+        });
       }
 
       const now = Date.now();
       const optimisticSession: SessionData = {
-        id: createLocalSessionId(),
+        id: createSessionId(),
         userId: user.uid,
         storeId: normalizedStoreId,
         status: "active",
         createdAt: { seconds: Math.floor(now / 1000) },
         expiresAt: { seconds: Math.floor((now + MAX_SESSION_DURATION_MS) / 1000) },
+        lastActivityAt: { seconds: Math.floor(now / 1000) },
       };
 
       setActiveSession(optimisticSession);
@@ -329,6 +417,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         status: "active",
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromMillis(now + MAX_SESSION_DURATION_MS),
+        lastActivityAt: serverTimestamp(),
       })
         .then(() => {
           setActiveSession((current) => {
@@ -354,19 +443,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     setSessionBusy(true);
     try {
-      if (!activeSession.id.startsWith("local-")) {
-        await withTimeout(
-          updateDoc(doc(db, "sessions", activeSession.id), {
+      await withTimeout(
+        setDoc(
+          doc(db, "sessions", activeSession.id),
+          {
             status: completion?.status ?? "completed",
             completedAt: serverTimestamp(),
             totalAmount: completion?.totalAmount ?? 0,
             transactionId: completion?.transactionId ?? null,
             auditStatus: completion?.auditStatus ?? "not_required",
             endReason: completion?.endReason ?? "checkout",
-          }),
-          8000
-        );
-      }
+            lastActivityAt: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        8000
+      );
     } finally {
       persistSession(null);
       setActiveSession(null);

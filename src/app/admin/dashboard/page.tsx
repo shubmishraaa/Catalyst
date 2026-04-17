@@ -15,6 +15,8 @@ interface SessionRecord {
   status?: "active" | "completed" | "abandoned";
   totalAmount?: number;
   createdAt?: { seconds?: number };
+  expiresAt?: { seconds?: number };
+  lastActivityAt?: { seconds?: number };
 }
 
 interface TransactionRecord {
@@ -35,9 +37,13 @@ interface UserRecord {
   name?: string;
   email?: string;
   isOnline?: boolean;
+  lastSeenAt?: { seconds?: number };
 }
 
+const ACTIVE_USER_WINDOW_SECONDS = 45;
+
 export default function AdminDashboardPage() {
+  const [clockTick, setClockTick] = useState(Date.now());
   const [activeSessionsCount, setActiveSessionsCount] = useState(0);
   const [activeUsersCount, setActiveUsersCount] = useState(0);
   const [flagsCount, setFlagsCount] = useState(0);
@@ -55,20 +61,9 @@ export default function AdminDashboardPage() {
       (snap) => {
         const nextSessions = snap.docs
           .map((sessionDoc) => ({ id: sessionDoc.id, ...sessionDoc.data() } as SessionRecord))
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-        const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
-        const usersSeenToday = new Set(
-          nextSessions
-            .filter((session) => (session.createdAt?.seconds || 0) >= startOfTodaySeconds)
-            .map((session) => session.userId)
-            .filter(Boolean)
-        );
+          .sort((a, b) => (b.lastActivityAt?.seconds || b.createdAt?.seconds || 0) - (a.lastActivityAt?.seconds || a.createdAt?.seconds || 0));
 
-        setSessions(nextSessions.slice(0, 6));
-        setActiveSessionsCount(nextSessions.filter((session) => session.status === "active").length);
-        setTotalUsersToday(usersSeenToday.size);
+        setSessions(nextSessions);
       }
     );
 
@@ -142,9 +137,6 @@ export default function AdminDashboardPage() {
         }, {});
 
         setUsersById(nextUsers);
-        setActiveUsersCount(
-          Object.values(nextUsers).filter((userRecord) => userRecord.isOnline === true).length
-        );
       }
     );
 
@@ -156,6 +148,46 @@ export default function AdminDashboardPage() {
       unsubUsers();
     };
   }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setClockTick(Date.now());
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const currentTimeSeconds = Math.floor(clockTick / 1000);
+    const startOfToday = new Date(clockTick);
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
+
+    const activeSessions = sessions.filter((session) => {
+      if (session.status !== "active") {
+        return false;
+      }
+
+      const expiresAtSeconds = session.expiresAt?.seconds;
+      return !expiresAtSeconds || expiresAtSeconds > currentTimeSeconds;
+    });
+
+    const usersSeenToday = new Set(
+      sessions
+        .filter((session) => (session.createdAt?.seconds || 0) >= startOfTodaySeconds)
+        .map((session) => session.userId)
+        .filter(Boolean)
+    );
+
+    setActiveSessionsCount(activeSessions.length);
+    setTotalUsersToday(usersSeenToday.size);
+    setActiveUsersCount(
+      Object.values(usersById).filter((userRecord) => {
+        const lastSeenSeconds = userRecord.lastSeenAt?.seconds || 0;
+        return userRecord.isOnline === true && (currentTimeSeconds - lastSeenSeconds) <= ACTIVE_USER_WINDOW_SECONDS;
+      }).length
+    );
+  }, [clockTick, sessions, usersById]);
 
   const stats = [
     { label: "Active Users", value: activeUsersCount, icon: Users, color: "text-sky-600", bg: "bg-sky-500/10" },
@@ -242,7 +274,7 @@ export default function AdminDashboardPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                sessions.map((session) => {
+                sessions.slice(0, 6).map((session) => {
                   const cartSummary = cartSummaries[session.id];
                   const itemCount = cartSummary?.itemCount || 0;
                   const liveTotal = cartSummary?.totalAmount || 0;
@@ -258,7 +290,7 @@ export default function AdminDashboardPage() {
                       <TableCell className="text-sm text-muted-foreground">{shopperName || "Unknown shopper"}</TableCell>
                       <TableCell>{itemCount}</TableCell>
                       <TableCell>{formatTime(session.createdAt?.seconds)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatTime(session.createdAt?.seconds)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatTime(session.lastActivityAt?.seconds || session.createdAt?.seconds)}</TableCell>
                       <TableCell>Rs. {displayTotal.toFixed(2)}</TableCell>
                       <TableCell>
                         <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${status.className}`}>

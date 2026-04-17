@@ -19,7 +19,12 @@ export default function AdminSessionsPage() {
     const unsub = onSnapshot(
       query(collection(db, "sessions"), where("status", "==", "active")), 
       (snapshot) => {
-        setSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const currentTimeSeconds = Math.floor(Date.now() / 1000);
+        setSessions(
+          snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter((session: any) => !session.expiresAt?.seconds || session.expiresAt.seconds > currentTimeSeconds)
+        );
       }
     );
 
@@ -67,7 +72,11 @@ export default function AdminSessionsPage() {
             )}
             {sessions.map((session) => {
               const dateOptions: any = { hour: '2-digit', minute:'2-digit' };
-              const time = session.createdAt?.seconds ? new Date(session.createdAt.seconds * 1000).toLocaleTimeString(undefined, dateOptions) : "Just now";
+              const time = session.lastActivityAt?.seconds
+                ? new Date(session.lastActivityAt.seconds * 1000).toLocaleTimeString(undefined, dateOptions)
+                : session.createdAt?.seconds
+                  ? new Date(session.createdAt.seconds * 1000).toLocaleTimeString(undefined, dateOptions)
+                  : "Just now";
               const shopperName = session.userId ? usersById[session.userId]?.name : null;
               
               return (

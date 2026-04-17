@@ -159,6 +159,9 @@ function CheckoutContent() {
   if (status === "returned") {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 space-y-8 animate-in fade-in">
+        <div className="w-full max-w-sm">
+          <SessionBanner />
+        </div>
         <h2 className="text-2xl font-bold text-center">Did you complete the payment?</h2>
         <Card className="w-full max-w-sm border-none bg-muted/30 p-8 text-center rounded-[2rem]">
           <p className="text-muted-foreground mb-2">Amount</p>
