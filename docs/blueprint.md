@@ -1,0 +1,20 @@
+# **App Name**: Catalyst
+
+## Core Features:
+
+- Shopper Authentication & Profile: Enables user login and registration via Firebase Auth. Shoppers can manage their personal profiles, including crucial dietary preferences (allergens), to personalize their shopping experience and alerts.
+- Smart Product Scanning & Allergen Insights: Integrates real-time barcode scanning (with manual input and animated scanner overlay) to fetch product data from Firestore. A 'Smart Scan Overlay' serves as an AI-powered tool, dynamically displaying product name, price, calories, active offers, and critical color-coded allergen warnings (red for unsafe, green for safe) based on the user's stored dietary preferences.
+- Real-time Shopping Cart Management: Shoppers can effortlessly view and manage their items in a real-time cart. This includes adjusting quantities, seeing immediate price updates, tracking estimated savings from offers, and calculating the order total, all powered by Firestore's live data capabilities.
+- Secure Checkout & Payment Simulation: Facilitates the checkout process by presenting a clear order summary and total amount. Supports a UPI deep-link payment simulation, followed by updating session and transaction records in Firestore. A celebratory confetti animation confirms payment success, providing transaction ID and an 'Exit Store' option.
+- Admin Dashboard for Live Monitoring: Provides store staff with a comprehensive, full-width desktop dashboard offering real-time oversight of key operational metrics. This includes live tracking of active shopper sessions, flagged suspicious activities, and completed transactions, all fetched directly from Firestore using onSnapshot listeners.
+- Automated Behaviour Flagging: Implements automated rules (e.g., high scan velocity, unusually low cart totals) to detect potentially suspicious shopper behaviors. Upon detection, the system creates 'flags' in Firestore with severity levels, alerting admin staff for real-time review and action.
+- Product & Offer Administration: An intuitive admin panel allowing store staff to view, create, and inline-edit product details, pricing, and active offers directly within Firestore, ensuring the catalog information is always current and accurate.
+
+## Style Guidelines:
+
+- Light Mode: Primary brand color is a balanced Teal (#22BBBB) for interactive elements and accents. Background is a crisp White (#FFFFFF) for a clean look. An analogous bright Sky Blue (#38B5FA) serves as an accent for call-to-action elements.
+- Dark Mode: The vibrant Teal (#22BBBB) maintains brand consistency as the primary color. Background shifts to a deep, sophisticated Navy (#1E344F) for reduced eye strain and a premium feel. The bright Sky Blue (#38B5FA) provides effective contrast and emphasis for interactive components.
+- Universal Font: 'Inter' (sans-serif) for both headlines and body text. This choice ensures a modern, neutral, and highly readable aesthetic consistent across the mobile shopper app and the desktop admin dashboard.
+- A system of clean, geometric line icons is employed across the application for clarity and a modern feel. Special color-coded badges (red for caution, green for safety) are used for prominent allergen and offer highlights.
+- The Shopper App adopts a mobile-first responsive layout, featuring a persistent bottom navigation bar for intuitive access to Home, Scan, Cart, and Profile. The Admin Dashboard is optimized for a full-width desktop layout, presenting structured data and management panels effectively.
+- The interface features smooth CSS transitions between screens, providing a fluid user experience. Specific animated elements include a captivating scan line for QR and barcode scanning, a 'Smart Scan Overlay' card sliding up from the bottom, and a celebratory confetti animation upon successful payment completion.

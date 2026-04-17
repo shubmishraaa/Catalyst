@@ -1,0 +1,76 @@
+{
+  "placeholderImages": [
+    {
+      "id": "logo",
+      "description": "Catalyst App Logo",
+      "imageUrl": "https://picsum.photos/seed/catalyst-logo/200/200",
+      "imageHint": "tech logo"
+    },
+    {
+      "id": "hero-shopper",
+      "description": "Shopper scanning a product",
+      "imageUrl": "https://picsum.photos/seed/shopper/600/400",
+      "imageHint": "retail scan"
+    },
+    {
+      "id": "prod-milk",
+      "description": "Organic Whole Milk",
+      "imageUrl": "https://picsum.photos/seed/milk/300/300",
+      "imageHint": "milk bottle"
+    },
+    {
+      "id": "prod-bread",
+      "description": "Artisan Sourdough Bread",
+      "imageUrl": "https://picsum.photos/seed/bread/300/300",
+      "imageHint": "bread"
+    },
+    {
+      "id": "prod-nuts",
+      "description": "Mixed Roasted Nuts",
+      "imageUrl": "https://picsum.photos/seed/nuts/300/300",
+      "imageHint": "mixed nuts"
+    },
+    {
+      "id": "prod-cookie",
+      "description": "Chocolate Chip Cookies",
+      "imageUrl": "https://picsum.photos/seed/cookie/300/300",
+      "imageHint": "cookies"
+    },
+    {
+      "id": "prod-apple",
+      "description": "Red Fuji Apple",
+      "imageUrl": "https://picsum.photos/seed/apple/300/300",
+      "imageHint": "red apple"
+    },
+    {
+      "id": "prod-banana",
+      "description": "Ripe Bananas",
+      "imageUrl": "https://picsum.photos/seed/banana/300/300",
+      "imageHint": "bananas"
+    },
+    {
+      "id": "prod-pasta",
+      "description": "Durum Wheat Pasta",
+      "imageUrl": "https://picsum.photos/seed/pasta/300/300",
+      "imageHint": "pasta package"
+    },
+    {
+      "id": "prod-cheese",
+      "description": "Mature Cheddar Cheese",
+      "imageUrl": "https://picsum.photos/seed/cheese/300/300",
+      "imageHint": "cheddar cheese"
+    },
+    {
+      "id": "prod-yogurt",
+      "description": "Greek Yogurt",
+      "imageUrl": "https://picsum.photos/seed/yogurt/300/300",
+      "imageHint": "yogurt cup"
+    },
+    {
+      "id": "prod-chips",
+      "description": "Sea Salt Potato Chips",
+      "imageUrl": "https://picsum.photos/seed/chips/300/300",
+      "imageHint": "potato chips"
+    }
+  ]
+}
