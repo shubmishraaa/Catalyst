@@ -1,18 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { BottomNav } from "@/components/shopper/BottomNav";
-import { Minus, Plus, Trash2, ArrowRight, Wallet, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Separator } from "@/components/ui/separator";
 import { useSession } from "@/lib/contexts/SessionContext";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
 import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { SessionBanner } from "@/components/shopper/SessionBanner";
+import { Minus, Plus, ShoppingCart, AlertTriangle, Lock } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 export default function Cart() {
   const { activeSession, loadingSession } = useSession();
@@ -25,23 +24,17 @@ export default function Cart() {
 
   useEffect(() => {
     if (loading || loadingSession) return;
-
     if (!user) {
       router.replace("/login");
       return;
     }
-
     if (!activeSession) {
       router.replace("/shopper/qr-start");
     }
   }, [activeSession, loading, loadingSession, router, user]);
 
   if (loading || loadingSession || loadingCart) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Loading cart...</p>
-      </div>
-    );
+    return <div className="shopper-shell flex min-h-screen items-center justify-center text-[13px] text-[color:var(--shopper-text-secondary)]">Loading cart...</div>;
   }
 
   const updateQty = async (id: string, currentQty: number, delta: number, name: string) => {
@@ -55,133 +48,85 @@ export default function Cart() {
   };
 
   const clearCart = async () => {
-    for (const item of items) {
-      await deleteDoc(doc(db, "cartItems", item.id));
-    }
+    await Promise.all(items.map((item) => deleteDoc(doc(db, "cartItems", item.id))));
   };
 
-  if (items.length === 0) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-12 text-center">
-        <div className="bg-muted p-8 rounded-full mb-6 text-primary">
-          <Trash2 className="h-12 w-12" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Your cart is empty - start scanning!</h2>
-        <p className="text-muted-foreground mb-8">Ready to start shopping? Head back to the scanner.</p>
-        <Button onClick={() => router.push("/shopper/scan")} className="w-full rounded-2xl h-14 font-bold text-lg text-white">
-          Start Scanning
-        </Button>
-        <BottomNav cartCount={itemCount} />
-      </div>
-    );
-  }
+  const warningItem = items.find((item) =>
+    alertsEnabled && (item.allergens || []).some((allergen) => userAllergens.includes(allergen.trim().toLowerCase()))
+  );
 
   return (
-    <div className="min-h-screen bg-background pb-40">
-      <div className="p-6 pt-12 max-w-lg mx-auto space-y-8">
-        <SessionBanner />
-        <header className="flex justify-between items-end">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold">Your Cart</h1>
-            <p className="text-muted-foreground text-sm">Session active - {itemCount} items</p>
+    <div className="shopper-shell page-transition min-h-screen pb-40">
+      <div className="mx-auto max-w-lg px-5 pt-10">
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-[24px] font-extrabold tracking-[-0.5px]">Your cart</h1>
+            <p className="mt-1 text-[12px] text-[color:var(--shopper-text-secondary)]">{activeSession?.storeId || "Store"} · {itemCount} items</p>
           </div>
-          <Button variant="ghost" className="text-destructive font-bold p-0 h-auto" onClick={clearCart}>
-            Clear All
-          </Button>
+          <Button variant="destructive" className="h-8 rounded-lg px-3 text-[12px]" onClick={clearCart}>Clear all</Button>
         </header>
 
-        <div className="space-y-4">
-          {items.map((item) => {
-            const matchingAllergens = (item.allergens || []).filter((allergen) =>
-              userAllergens.includes(allergen.trim().toLowerCase())
-            );
-
-            return (
-              <div key={item.id} className="flex gap-4 p-4 bg-card rounded-3xl border border-border">
-                <div className="w-20 h-20 rounded-2xl overflow-hidden bg-muted flex items-center justify-center text-xs text-muted-foreground">
-                  {item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : "No Image"}
-                </div>
-                <div className="flex-1 flex flex-col justify-between">
+        {items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center pt-20 text-center">
+            <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[color:var(--shopper-surface-2)] text-[color:var(--shopper-text-secondary)]">
+              <ShoppingCart className="h-6 w-6" />
+            </div>
+            <h2 className="text-[15px] font-bold">Your cart is empty</h2>
+            <p className="mt-2 max-w-[260px] text-[12px] text-[color:var(--shopper-text-secondary)]">Start scanning products to add them here.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {warningItem ? (
+              <div className="rounded-xl border border-[#ff475733] bg-[#ff47570a] p-3">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 text-[#ff4757]" />
                   <div>
-                    <h3 className="font-bold text-base leading-tight">{item.name}</h3>
-                    <p className="text-primary font-bold">Rs. {item.price}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Item total: Rs. {(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(2)}
-                    </p>
-                    {alertsEnabled && matchingAllergens.length > 0 ? (
-                      <div className="mt-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-3 py-2 text-destructive">
-                        <p className="flex items-center gap-2 text-xs font-semibold">
-                          <AlertTriangle className="h-4 w-4" />
-                          Allergen warning
-                        </p>
-                        <p className="mt-1 text-xs">
-                          Matches your saved allergens: {matchingAllergens.join(", ")}.
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center justify-between mt-2">
-                    {item.offer?.discountPercent ? (
-                      <span className="text-[10px] bg-accent/10 text-accent px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                        {item.offer.discountPercent}% off
-                      </span>
-                    ) : null}
-                    <div className="flex items-center gap-3 bg-muted rounded-full p-1 ml-auto">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-full bg-background"
-                        onClick={() => updateQty(item.id, item.quantity, -1, item.name)}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <span className="font-bold text-sm min-w-[1rem] text-center">{item.quantity}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-full bg-background"
-                        onClick={() => updateQty(item.id, item.quantity, 1, item.name)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.04em] text-[#ff4757]">Allergen alert</p>
+                    <p className="text-[10px] text-[color:var(--shopper-text-secondary)]">{warningItem.name} matches one of your saved allergens.</p>
                   </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ) : null}
 
-        <section className="p-6 bg-muted/30 rounded-3xl space-y-4">
-          <div className="flex justify-between text-muted-foreground">
-            <span>Subtotal</span>
-            <span className="font-bold">Rs. {subtotal.toFixed(2)}</span>
+            {items.map((item) => (
+              <div key={item.id} className="shopper-card flex gap-3 p-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-[color:var(--shopper-surface-2)] text-lg">🛒</div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-bold">{item.name}</p>
+                  <p className="mt-1 text-[13px] font-bold text-primary">{formatCurrency(Number(item.price || 0))}</p>
+                  {item.offer?.discountPercent ? (
+                    <span className="mt-2 inline-flex rounded-md bg-primary/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.04em] text-primary">Offer applied</span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-2 self-center">
+                  <button onClick={() => updateQty(item.id, item.quantity, -1, item.name)} className="flex h-[26px] w-[26px] items-center justify-center rounded-lg border border-[color:var(--shopper-border)] bg-[color:var(--shopper-surface-2)]">
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className="w-4 text-center text-[13px] font-bold">{item.quantity}</span>
+                  <button onClick={() => updateQty(item.id, item.quantity, 1, item.name)} className="flex h-[26px] w-[26px] items-center justify-center rounded-lg border border-[color:var(--shopper-border)] bg-[color:var(--shopper-surface-2)]">
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="flex justify-between text-accent">
-            <span>Savings</span>
-            <span className="font-bold">-Rs. {savings.toFixed(2)}</span>
-          </div>
-          <Separator />
-          <div className="flex justify-between text-xl font-bold">
-            <span>Total</span>
-            <span>Rs. {total.toFixed(2)}</span>
-          </div>
-        </section>
+        )}
+      </div>
 
-        <div className="fixed bottom-24 left-0 right-0 p-6 bg-gradient-to-t from-background via-background to-transparent z-40">
-          <Button
-            onClick={() => router.push("/shopper/checkout")}
-            className="w-full h-16 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 bg-primary flex justify-between px-8"
-          >
-            <div className="flex items-center gap-3">
-              <Wallet className="h-6 w-6" />
-              <span>Checkout</span>
+      <div className="fixed bottom-[72px] left-0 right-0 z-40">
+        <div className="mx-auto max-w-lg px-5">
+          <div className="rounded-t-[18px] border-t border-[color:var(--shopper-border)] bg-[color:var(--shopper-surface-1)] p-4">
+            <div className="space-y-2 text-[13px]">
+              <div className="flex justify-between text-[color:var(--shopper-text-secondary)]"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+              {savings > 0 ? <div className="flex justify-between text-primary"><span>Savings</span><span>{formatCurrency(savings)}</span></div> : null}
+              <div className="my-2 h-px bg-[color:var(--shopper-border)]" />
+              <div className="flex justify-between text-[15px] font-extrabold"><span>Total</span><span>{formatCurrency(total)}</span></div>
             </div>
-            <div className="flex items-center gap-2">
-              <span>Rs. {total.toFixed(2)}</span>
-              <ArrowRight className="h-5 w-5" />
-            </div>
-          </Button>
+            <Button onClick={() => router.push("/shopper/checkout")} className="mt-4 flex h-12 w-full items-center justify-between rounded-[14px] bg-primary px-4 text-primary-foreground">
+              <span className="flex items-center gap-2"><Lock className="h-4 w-4" /> Pay with UPI</span>
+              <span>{formatCurrency(total)} →</span>
+            </Button>
+          </div>
         </div>
       </div>
 

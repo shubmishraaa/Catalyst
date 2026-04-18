@@ -3,15 +3,14 @@
 import { useState, Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { CheckCircle2, Wallet, ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/lib/contexts/SessionContext";
 import { useAuth } from "@/lib/contexts/AuthContext";
 import { useCart } from "@/hooks/use-cart";
 import { db } from "@/lib/firebase";
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { SessionBanner } from "@/components/shopper/SessionBanner";
+import { ArrowLeft, Lock, Check } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
 
 function CheckoutContent() {
   const [status, setStatus] = useState<"pending" | "returned" | "success">("pending");
@@ -24,7 +23,7 @@ function CheckoutContent() {
   const { toast } = useToast();
   const { activeSession, endSession } = useSession();
   const { user, loading: authLoading } = useAuth();
-  const { total } = useCart();
+  const { items, total, savings } = useCart();
 
   useEffect(() => {
     setTxnRef(`TXN_${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
@@ -32,12 +31,10 @@ function CheckoutContent() {
 
   useEffect(() => {
     if (authLoading) return;
-
     if (!user) {
       router.replace("/login");
       return;
     }
-
     if (!activeSession) {
       router.replace("/shopper/qr-start");
     }
@@ -48,11 +45,7 @@ function CheckoutContent() {
   }, [total]);
 
   const handleUPI = async () => {
-    if (!activeSession) {
-      toast({ title: "No active session", variant: "destructive" });
-      return;
-    }
-
+    if (!activeSession) return;
     setLoading(true);
 
     try {
@@ -66,13 +59,11 @@ function CheckoutContent() {
         createdAt: serverTimestamp(),
       });
       setCurrentTxnId(docRef.id);
-
       window.location.href = `upi://pay?pa=catalyst@upi&pn=Catalyst&am=${totalAmount.toFixed(2)}&cu=INR`;
-
       setTimeout(() => {
         setStatus("returned");
         setLoading(false);
-      }, 500);
+      }, 1500);
     } catch (err: any) {
       toast({ title: "Transaction init failed", description: err.message, variant: "destructive" });
       setLoading(false);
@@ -81,21 +72,11 @@ function CheckoutContent() {
 
   const handleSuccess = async () => {
     setLoading(true);
-
     try {
       if (currentTxnId) {
-        await updateDoc(doc(db, "transactions", currentTxnId), {
-          status: "success",
-          completedAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, "transactions", currentTxnId), { status: "success", completedAt: serverTimestamp() });
       }
-
-      await endSession({
-        totalAmount,
-        transactionId: currentTxnId,
-        auditStatus: "not_required",
-      });
-
+      await endSession({ totalAmount, transactionId: currentTxnId, auditStatus: "not_required" });
       setStatus("success");
     } catch (err: any) {
       toast({ title: "Could not complete checkout", description: err.message, variant: "destructive" });
@@ -108,10 +89,7 @@ function CheckoutContent() {
     setLoading(true);
     try {
       if (currentTxnId) {
-        await updateDoc(doc(db, "transactions", currentTxnId), {
-          status: "failed",
-          completedAt: serverTimestamp(),
-        });
+        await updateDoc(doc(db, "transactions", currentTxnId), { status: "failed", completedAt: serverTimestamp() });
       }
       toast({ title: "Payment failed", description: "Please try again.", variant: "destructive" });
       setStatus("pending");
@@ -120,103 +98,71 @@ function CheckoutContent() {
     }
   };
 
-  const handleExit = () => {
-    router.push("/shopper/home");
-  };
-
   if (status === "success") {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-700">
-        <div className="bg-primary/10 p-8 rounded-full mb-8 animate-in zoom-in duration-500 delay-300">
-          <CheckCircle2 className="h-24 w-24 text-primary" />
+      <div className="shopper-shell page-transition flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 text-center">
+        <div className="relative mb-6">
+          <svg width="120" height="120" viewBox="0 0 120 120" className="mx-auto">
+            <circle cx="60" cy="60" r="54" fill="rgba(0,212,170,0.08)" stroke="rgba(0,212,170,0.2)" />
+            <path className="checkmark-path" d="M38 62L53 77L84 46" fill="none" stroke="#00D4AA" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {Array.from({ length: 20 }).map((_, index) => (
+            <span
+              key={index}
+              className="confetti-piece"
+              style={{
+                left: "50%",
+                top: "50%",
+                backgroundColor: ["#00D4AA", "#7C3AED", "#FFB800", "#F0F4FF"][index % 4],
+                ["--confetti-x" as any]: `${(index - 10) * 12}px`,
+                ["--confetti-y" as any]: `${-70 - (index % 5) * 16}px`,
+                ["--confetti-r" as any]: `${index * 24}deg`,
+                animationDelay: `${index * 0.02}s`,
+              }}
+            />
+          ))}
         </div>
-
-        <h1 className="text-4xl font-bold mb-4">Payment Success!</h1>
-        <p className="text-muted-foreground text-lg mb-12 max-w-xs mx-auto">
-          Your transaction of <span className="text-foreground font-bold">Rs. {totalAmount.toFixed(2)}</span> was completed successfully.
-        </p>
-
-        <Card className="w-full max-w-sm mb-12 border-none bg-muted/30">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Transaction ID</span>
-              <span className="font-mono font-bold">{txnRef}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Payment Method</span>
-              <span className="font-bold">Catalyst UPI</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Button onClick={handleExit} className="w-full max-w-sm h-16 rounded-2xl text-lg font-bold">
-          Exit Store <ArrowRight className="ml-2 h-6 w-6" />
-        </Button>
-      </div>
-    );
-  }
-
-  if (status === "returned") {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 space-y-8 animate-in fade-in">
-        <div className="w-full max-w-sm">
-          <SessionBanner />
-        </div>
-        <h2 className="text-2xl font-bold text-center">Did you complete the payment?</h2>
-        <Card className="w-full max-w-sm border-none bg-muted/30 p-8 text-center rounded-[2rem]">
-          <p className="text-muted-foreground mb-2">Amount</p>
-          <h2 className="text-5xl font-bold text-primary">Rs. {totalAmount.toFixed(2)}</h2>
-        </Card>
-        <div className="flex flex-col gap-4 w-full max-w-sm">
-          <Button onClick={handleSuccess} disabled={loading} className="w-full h-16 rounded-2xl font-bold text-lg shadow-xl shadow-primary/20">
-            Payment Successful
-          </Button>
-          <Button onClick={handleFailure} disabled={loading} variant="destructive" className="w-full h-16 rounded-2xl font-bold text-lg">
-            Payment Failed
-          </Button>
-        </div>
+        <h1 className="text-[22px] font-extrabold text-primary">Payment confirmed!</h1>
+        <p className="mt-3 text-[11px] font-mono text-[color:var(--shopper-text-secondary)]">{txnRef || currentTxnId}</p>
+        <p className="mt-2 text-[13px] text-[color:var(--shopper-text-secondary)]">{activeSession?.storeId || "Catalyst Store"} · {formatCurrency(totalAmount)}</p>
+        <Button onClick={() => router.push("/shopper/home")} className="mt-8 h-12 w-full max-w-sm rounded-[14px] bg-primary text-primary-foreground">Done — exit store</Button>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-6 pt-12">
-      <div className="max-w-lg mx-auto space-y-8">
-        <SessionBanner />
-        <header className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="h-6 w-6" />
-          </Button>
-          <h1 className="text-2xl font-bold">Secure Checkout</h1>
-        </header>
+    <div className="shopper-shell page-transition min-h-screen px-5 pb-10 pt-10">
+      <div className="mx-auto max-w-lg">
+        <button onClick={() => router.back()} className="mb-5 flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--shopper-border)] bg-[color:var(--shopper-surface-1)]">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
 
-        <Card className="border-none bg-muted/30 p-8 text-center rounded-[2rem]">
-          <p className="text-muted-foreground mb-2">Amount to Pay</p>
-          <h2 className="text-5xl font-bold text-primary">Rs. {totalAmount.toFixed(2)}</h2>
-        </Card>
-
-        <div className="space-y-4">
-          <h3 className="font-bold text-lg">Choose Payment Method</h3>
-          <Button
-            className="w-full h-20 rounded-3xl border-2 border-primary/20 bg-primary/5 hover:bg-primary/10 text-foreground flex justify-between px-8"
-            onClick={handleUPI}
-            disabled={loading || totalAmount <= 0}
-          >
-            <div className="flex items-center gap-4">
-              <div className="bg-primary p-2 rounded-xl">
-                <Wallet className="h-6 w-6 text-white" />
+        <div className="shopper-card p-4">
+          <p className="shopper-label">Checkout</p>
+          <h1 className="mt-2 text-[22px] font-extrabold tracking-[-0.5px]">Order summary</h1>
+          <div className="mt-4 space-y-3 text-[13px]">
+            {items.map((item) => (
+              <div key={item.id} className="flex items-center justify-between text-[color:var(--shopper-text-secondary)]">
+                <span className="truncate pr-4">{item.name} × {item.quantity}</span>
+                <span>{formatCurrency(Number(item.price || 0) * Number(item.quantity || 0))}</span>
               </div>
-              <div className="text-left">
-                <p className="font-bold">Pay via UPI</p>
-                <p className="text-xs text-muted-foreground">Opens your UPI app for payment</p>
-              </div>
-            </div>
-            <ExternalLink className="h-5 w-5 text-muted-foreground" />
-          </Button>
+            ))}
+            {savings > 0 ? <div className="flex justify-between text-primary"><span>Savings</span><span>{formatCurrency(savings)}</span></div> : null}
+            <div className="h-px bg-[color:var(--shopper-border)]" />
+            <div className="flex justify-between text-[18px] font-extrabold"><span>Total</span><span>{formatCurrency(totalAmount)}</span></div>
+          </div>
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-8">
-          After returning from UPI, mark whether the payment was successful or failed.
-        </p>
+
+        <Button onClick={handleUPI} disabled={loading || totalAmount <= 0} className="mt-5 h-12 w-full rounded-[14px] bg-primary text-primary-foreground">
+          <Lock className="h-4 w-4" /> Pay with UPI — {formatCurrency(totalAmount)}
+        </Button>
+
+        {status === "returned" ? (
+          <div className="mt-4 space-y-3">
+            <Button onClick={handleSuccess} disabled={loading} className="h-12 w-full rounded-[14px] bg-primary text-primary-foreground">Payment successful</Button>
+            <Button onClick={handleFailure} disabled={loading} variant="secondary" className="h-12 w-full rounded-[14px] bg-[color:var(--shopper-surface-2)] text-[color:var(--shopper-text-primary)]">Payment failed</Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -224,7 +170,7 @@ function CheckoutContent() {
 
 export default function Checkout() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="shopper-shell flex min-h-screen items-center justify-center">Loading...</div>}>
       <CheckoutContent />
     </Suspense>
   );

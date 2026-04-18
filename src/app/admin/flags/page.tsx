@@ -1,10 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { db } from "@/lib/firebase";
 import { collection, query, onSnapshot, orderBy, doc, updateDoc } from "firebase/firestore";
@@ -14,79 +10,37 @@ export default function AdminFlagsPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    const unsub = onSnapshot(
-      query(collection(db, "flags"), orderBy("timestamp", "desc")),
-      (snapshot) => {
-        setFlags(snapshot.docs.map((flagDoc) => ({ id: flagDoc.id, ...flagDoc.data() })));
-      }
-    );
+    const unsub = onSnapshot(query(collection(db, "flags"), orderBy("timestamp", "desc")), (snapshot) => {
+      setFlags(snapshot.docs.map((flagDoc) => ({ id: flagDoc.id, ...flagDoc.data() })));
+    });
     return () => unsub();
   }, []);
 
-  const updateFlagStatus = async (id: string, status: "open" | "monitoring" | "resolved") => {
-    try {
-      await updateDoc(doc(db, "flags", id), { status });
-      toast({ title: `Flag marked as ${status}` });
-    } catch (err: any) {
-      toast({ title: "Flag update failed", description: err.message, variant: "destructive" });
-    }
-  };
-
-  const badgeClassBySeverity: Record<string, string> = {
-    low: "bg-yellow-500/10 text-yellow-600",
-    medium: "bg-orange-500/10 text-orange-600",
-    high: "bg-destructive/10 text-destructive",
+  const resolveFlag = async (id: string) => {
+    await updateDoc(doc(db, "flags", id), { status: "resolved", resolved: true });
+    toast({ title: "Flag resolved" });
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in">
+    <div className="space-y-6">
       <header>
-        <h2 className="text-3xl font-bold">Security Flags</h2>
-        <p className="text-muted-foreground">Monitor abnormal scanner activity.</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:#64748b]">Flags</p>
+        <h2 className="mt-1 text-[20px] font-extrabold tracking-[-0.4px]">Security queue</h2>
       </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {flags.length === 0 && (
-          <p className="col-span-full text-center p-8 text-muted-foreground">No security flags raised.</p>
-        )}
-        {flags.map((flag) => {
-          const time = flag.timestamp?.seconds
-            ? new Date(flag.timestamp.seconds * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-            : "Just now";
-
-          const severity = flag.severity || "medium";
-          const status = flag.status || "open";
-
-          return (
-            <Card key={flag.id} className="border-none shadow-sm bg-card border border-border border-l-4 border-l-destructive">
-              <CardHeader className="flex flex-row items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-destructive" />
-                    {flag.reason}
-                  </CardTitle>
-                  <CardDescription>Session {flag.sessionId?.substring(0, 8)}... - {time}</CardDescription>
-                </div>
-                <div className="flex gap-2">
-                  <Badge className={`shadow-none font-bold rounded-xl border-none ${badgeClassBySeverity[severity] || badgeClassBySeverity.medium}`}>
-                    {severity.toUpperCase()}
-                  </Badge>
-                  <Badge variant="outline" className="rounded-xl capitalize">
-                    {status}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="flex justify-end gap-2 text-sm pt-2">
-                <Button variant="outline" size="sm" onClick={() => updateFlagStatus(flag.id, "monitoring")} className="rounded-xl shadow-sm">
-                  Monitor Session
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => updateFlagStatus(flag.id, "resolved")} className="rounded-xl shadow-sm bg-muted text-foreground hover:bg-muted/80">
-                  Resolve
-                </Button>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {flags.length === 0 ? <div className="admin-card p-6 text-[12px] text-[color:#94a3b8]">No security flags raised.</div> : null}
+        {flags.map((flag) => (
+          <div key={flag.id} className="admin-card border-l-2 border-l-[#ff4757] p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[13px] font-bold">{flag.reason}</p>
+                <p className="mt-1 text-[11px] text-[color:#94a3b8]">{flag.sessionId || "Session"} · {flag.timestamp?.seconds ? new Date(flag.timestamp.seconds * 1000).toLocaleString("en-IN") : "now"}</p>
+              </div>
+              <span className={`rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-[0.04em] ${flag.severity === "high" ? "bg-[#ff475714] text-[#ff4757]" : "bg-[#ffb80018] text-[#ffb800]"}`}>{flag.severity || "medium"}</span>
+            </div>
+            <button onClick={() => resolveFlag(flag.id)} className="mt-4 rounded-lg border border-[color:#e2e8f0] px-3 py-2 text-[11px] font-bold">Resolve</button>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -10,12 +8,12 @@ import { db } from "@/lib/firebase";
 import { collection, onSnapshot, addDoc, deleteDoc, doc, setDoc } from "firebase/firestore";
 import { Loader2, Trash2 } from "lucide-react";
 import { DEMO_PRODUCTS } from "@/lib/demo-products";
+import { formatCurrency } from "@/lib/utils";
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
-
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -25,34 +23,18 @@ export default function AdminProductsPage() {
 
   useEffect(() => {
     const seedDemoProducts = async () => {
-      try {
-        await Promise.all(
-          DEMO_PRODUCTS.map((product) =>
-            setDoc(
-              doc(db, "products", product.id),
-              {
-                barcode: product.barcode,
-                name: product.name,
-                price: product.price,
-                calories: product.calories,
-                allergens: product.allergens,
-                offer: product.offer,
-                image: product.image,
-              },
-              { merge: true }
-            )
-          )
-        );
-      } catch (error) {
-        console.warn("Could not seed demo products in admin catalog", error);
-      }
+      await Promise.all(DEMO_PRODUCTS.map((product) => setDoc(doc(db, "products", product.id), {
+        barcode: product.barcode,
+        name: product.name,
+        price: product.price,
+        calories: product.calories,
+        allergens: product.allergens,
+        offer: product.offer,
+        image: product.image,
+      }, { merge: true })));
     };
-
     void seedDemoProducts();
-
-    const unsub = onSnapshot(collection(db, "products"), (snapshot) => {
-      setProducts(snapshot.docs.map((productDoc) => ({ id: productDoc.id, ...productDoc.data() })));
-    });
+    const unsub = onSnapshot(collection(db, "products"), (snapshot) => setProducts(snapshot.docs.map((productDoc) => ({ id: productDoc.id, ...productDoc.data() }))));
     return () => unsub();
   }, []);
 
@@ -81,96 +63,36 @@ export default function AdminProductsPage() {
     setIsSubmitting(false);
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, "products", id));
-      toast({ title: "Product deleted" });
-    } catch (err: any) {
-      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
-    }
-  };
-
   return (
-    <div className="space-y-8 animate-in fade-in">
+    <div className="space-y-6">
       <header>
-        <h2 className="text-3xl font-bold">Product Catalog</h2>
-        <p className="text-muted-foreground">Manage inventory, allergens, and active offers.</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:#64748b]">Products</p>
+        <h2 className="mt-1 text-[20px] font-extrabold tracking-[-0.4px]">Product catalog</h2>
       </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="col-span-1 border-none shadow-sm bg-card border border-border h-fit">
-          <CardHeader>
-            <CardTitle>Add New Product</CardTitle>
-            <CardDescription>Scanner data for the mobile app.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAddProduct} className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Name</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Organic Bananas" className="h-12 rounded-xl bg-muted/20" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Price (Rs.)</label>
-                <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="e.g. 50" className="h-12 rounded-xl bg-muted/20" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Barcode (EAN/UPC)</label>
-                <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} required placeholder="e.g. 89010309111" className="h-12 rounded-xl bg-muted/20" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Calories</label>
-                <Input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} placeholder="e.g. 120" className="h-12 rounded-xl bg-muted/20" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Allergens (comma separated)</label>
-                <Input value={allergens} onChange={(e) => setAllergens(e.target.value)} placeholder="e.g. dairy, nuts" className="h-12 rounded-xl bg-muted/20" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground uppercase mb-2 block">Offer Discount %</label>
-                <Input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} placeholder="e.g. 10" className="h-12 rounded-xl bg-muted/20" />
-              </div>
-              <Button type="submit" disabled={isSubmitting} className="w-full h-12 rounded-xl font-bold mt-4 shadow-xl shadow-primary/20">
-                {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : "Save Product"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-1 lg:col-span-2 border-none shadow-sm overflow-hidden bg-card border border-border">
-          <Table>
-            <TableHeader className="bg-muted/50 border-b-border">
-              <TableRow>
-                <TableHead>Barcode</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Offer</TableHead>
-                <TableHead>Calories</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {products.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center p-8 text-muted-foreground">No products found in the catalog.</TableCell>
-                </TableRow>
-              )}
-              {products.map((product) => (
-                <TableRow key={product.id} className="hover:bg-muted/30">
-                  <TableCell className="font-mono text-xs font-medium text-muted-foreground">{product.barcode}</TableCell>
-                  <TableCell className="font-bold">{product.name}</TableCell>
-                  <TableCell>Rs. {product.price}</TableCell>
-                  <TableCell>{product.offer?.discountPercent ? `${product.offer.discountPercent}% off` : "None"}</TableCell>
-                  <TableCell>{product.calories} kcal</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(product.id)} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
+      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.4fr]">
+        <form onSubmit={handleAddProduct} className="admin-card space-y-3 p-4">
+          <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Product name" />
+          <Input type="number" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="Price" />
+          <Input value={barcode} onChange={(e) => setBarcode(e.target.value)} required placeholder="Barcode" />
+          <Input type="number" value={calories} onChange={(e) => setCalories(e.target.value)} placeholder="Calories" />
+          <Input value={allergens} onChange={(e) => setAllergens(e.target.value)} placeholder="Allergens" />
+          <Input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(e.target.value)} placeholder="Discount %" />
+          <Button type="submit" disabled={isSubmitting} className="h-11 w-full rounded-[14px] bg-primary text-primary-foreground">
+            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save product"}
+          </Button>
+        </form>
+        <div className="admin-card overflow-hidden">
+          {products.map((product) => (
+            <div key={product.id} className="grid grid-cols-[1fr_1.1fr_0.8fr_auto] gap-3 border-b border-[color:#f1f5f9] px-4 py-3 text-[12px] last:border-b-0">
+              <span className="truncate font-mono">{product.barcode}</span>
+              <span className="truncate font-bold">{product.name}</span>
+              <span>{formatCurrency(Number(product.price || 0))}</span>
+              <button onClick={() => deleteDoc(doc(db, "products", product.id))} className="text-[#ff4757]">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -1,72 +1,39 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { formatCurrency } from "@/lib/utils";
 
 export default function AdminAuditsPage() {
   const [txns, setTxns] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(
-      query(collection(db, "transactions"), where("status", "in", ["success", "failed"])), 
-      (snapshot) => {
-        setTxns(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      }
-    );
+    const unsub = onSnapshot(query(collection(db, "transactions"), where("status", "in", ["success", "failed"])), (snapshot) => {
+      setTxns(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    });
     return () => unsub();
   }, []);
 
   return (
-    <div className="space-y-8 animate-in fade-in">
+    <div className="space-y-6">
       <header>
-        <h2 className="text-3xl font-bold">Audit History</h2>
-        <p className="text-muted-foreground">Historical ledger of all completed checkout sequences.</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:#64748b]">Audits</p>
+        <h2 className="mt-1 text-[20px] font-extrabold tracking-[-0.4px]">Audit history</h2>
       </header>
-
-      <Card className="border-none shadow-sm overflow-hidden bg-card border border-border">
-        <Table>
-          <TableHeader className="bg-muted/50 border-b-border">
-            <TableRow>
-              <TableHead>Transaction ID</TableHead>
-              <TableHead>Session ID</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Timestamp</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {txns.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center p-8 text-muted-foreground">No audits available.</TableCell>
-              </TableRow>
-            )}
-            {txns.map((txn) => {
-              const dateOptions: any = { month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit' };
-              const time = txn.createdAt?.seconds ? new Date(txn.createdAt.seconds * 1000).toLocaleDateString(undefined, dateOptions) : "Just now";
-              
-              return (
-                <TableRow key={txn.id} className="hover:bg-muted/30">
-                  <TableCell className="font-mono font-medium text-xs">{txn.id}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{txn.sessionId}</TableCell>
-                  <TableCell className="font-bold">₹{txn.amount}</TableCell>
-                  <TableCell>{time}</TableCell>
-                  <TableCell>
-                    {txn.status === "success" ? (
-                      <Badge className="bg-green-500/10 text-green-500 rounded-full border-none shadow-none font-bold hover:bg-green-500/20">Success</Badge>
-                    ) : (
-                      <Badge className="bg-destructive/10 text-destructive rounded-full border-none shadow-none font-bold hover:bg-destructive/20">Failed</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </Card>
+      <div className="admin-card overflow-hidden">
+        <div className="grid grid-cols-[1.2fr_1fr_1fr_1fr] gap-3 border-b border-[color:#f1f5f9] bg-[color:#f8fafc] px-4 py-3 text-[10px] font-bold uppercase tracking-[0.08em] text-[color:#94a3b8]">
+          <span>Transaction</span><span>Session</span><span>Amount</span><span>Status</span>
+        </div>
+        {txns.map((txn) => (
+          <div key={txn.id} className="grid grid-cols-[1.2fr_1fr_1fr_1fr] gap-3 border-b border-[color:#f1f5f9] px-4 py-3 text-[12px] last:border-b-0">
+            <span className="truncate font-mono">{txn.id}</span>
+            <span className="truncate">{txn.sessionId}</span>
+            <span>{formatCurrency(Number(txn.amount || 0))}</span>
+            <span className={`w-fit rounded-md px-2 py-1 text-[9px] font-bold uppercase tracking-[0.04em] ${txn.status === "success" ? "bg-primary/10 text-primary" : "bg-[#ff475714] text-[#ff4757]"}`}>{txn.status}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

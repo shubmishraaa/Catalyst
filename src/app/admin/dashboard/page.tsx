@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, AlertCircle, IndianRupee, CheckCircle2 } from "lucide-react";
+import { Users, AlertCircle, IndianRupee, Lock, Star } from "lucide-react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { QRCodeSVG } from "qrcode.react";
+import { formatCurrency } from "@/lib/utils";
 
 interface SessionRecord {
   id: string;
@@ -21,377 +20,142 @@ interface SessionRecord {
 
 interface TransactionRecord {
   id: string;
-  sessionId?: string;
   amount?: number;
   status?: "pending" | "success" | "failed";
-  txnRef?: string;
-  createdAt?: { seconds?: number };
-}
-
-interface CartSummary {
-  itemCount: number;
-  totalAmount: number;
 }
 
 interface UserRecord {
   name?: string;
-  email?: string;
   isOnline?: boolean;
   lastSeenAt?: { seconds?: number };
-  activeSessionId?: string | null;
-  activeSessionStatus?: "active" | "completed" | "abandoned" | null;
-  activeStoreId?: string | null;
-  sessionExpiresAt?: { seconds?: number };
-  lastSessionActivityAt?: { seconds?: number };
 }
 
-const ACTIVE_USER_WINDOW_SECONDS = 45;
-
 export default function AdminDashboardPage() {
-  const [clockTick, setClockTick] = useState(Date.now());
-  const [activeSessionsCount, setActiveSessionsCount] = useState(0);
-  const [activeUsersCount, setActiveUsersCount] = useState(0);
-  const [flagsCount, setFlagsCount] = useState(0);
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [totalUsersToday, setTotalUsersToday] = useState(0);
-  const [rawSessions, setRawSessions] = useState<SessionRecord[]>([]);
-  const [displaySessions, setDisplaySessions] = useState<SessionRecord[]>([]);
+  const [now, setNow] = useState(Date.now());
+  const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
-  const [cartSummaries, setCartSummaries] = useState<Record<string, CartSummary>>({});
   const [usersById, setUsersById] = useState<Record<string, UserRecord>>({});
-  const [flaggedSessionIds, setFlaggedSessionIds] = useState<Record<string, boolean>>({});
+  const [flags, setFlags] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsubSessions = onSnapshot(
-      collection(db, "sessions"),
-      (snap) => {
-        const nextSessions = snap.docs
-          .map((sessionDoc) => ({ id: sessionDoc.id, ...sessionDoc.data() } as SessionRecord))
-          .sort((a, b) => (b.lastActivityAt?.seconds || b.createdAt?.seconds || 0) - (a.lastActivityAt?.seconds || a.createdAt?.seconds || 0));
-
-        setRawSessions(nextSessions);
-      }
-    );
-
-    const unsubFlags = onSnapshot(
-      collection(db, "flags"),
-      (snap) => {
-        const nextFlaggedSessions = snap.docs.reduce<Record<string, boolean>>((acc, flagDoc) => {
-          const data = flagDoc.data() as { sessionId?: string; status?: string };
-          if (data.sessionId && data.status !== "resolved") {
-            acc[data.sessionId] = true;
-          }
-          return acc;
-        }, {});
-
-        setFlagsCount(snap.size);
-        setFlaggedSessionIds(nextFlaggedSessions);
-      }
-    );
-
-    const unsubTxns = onSnapshot(
-      collection(db, "transactions"),
-      (snap) => {
-        const nextTransactions = snap.docs
-          .map((txnDoc) => ({ id: txnDoc.id, ...txnDoc.data() } as TransactionRecord))
-          .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-        setTransactions(nextTransactions.slice(0, 6));
-        const revenue = nextTransactions.reduce((acc, txn) => (
-          txn.status === "success" ? acc + (Number(txn.amount) || 0) : acc
-        ), 0);
-        setTotalRevenue(revenue);
-      }
-    );
-
-    const unsubCartItems = onSnapshot(
-      collection(db, "cartItems"),
-      (snap) => {
-        const nextCartSummaries = snap.docs.reduce<Record<string, CartSummary>>((acc, cartItemDoc) => {
-          const data = cartItemDoc.data() as {
-            sessionId?: string;
-            quantity?: number;
-            price?: number;
-          };
-
-          if (!data.sessionId) {
-            return acc;
-          }
-
-          const quantity = Number(data.quantity) || 0;
-          const price = Number(data.price) || 0;
-          const existing = acc[data.sessionId] || { itemCount: 0, totalAmount: 0 };
-
-          acc[data.sessionId] = {
-            itemCount: existing.itemCount + quantity,
-            totalAmount: existing.totalAmount + (quantity * price),
-          };
-
-          return acc;
-        }, {});
-
-        setCartSummaries(nextCartSummaries);
-      }
-    );
-
-    const unsubUsers = onSnapshot(
-      collection(db, "users"),
-      (snap) => {
-        const nextUsers = snap.docs.reduce<Record<string, UserRecord>>((acc, userDoc) => {
-          acc[userDoc.id] = userDoc.data() as UserRecord;
-          return acc;
-        }, {});
-
-        setUsersById(nextUsers);
-      }
-    );
+    const unsubSessions = onSnapshot(collection(db, "sessions"), (snap) => setSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionRecord))));
+    const unsubTransactions = onSnapshot(collection(db, "transactions"), (snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TransactionRecord))));
+    const unsubUsers = onSnapshot(collection(db, "users"), (snap) => setUsersById(snap.docs.reduce<Record<string, UserRecord>>((acc, userDoc) => {
+      acc[userDoc.id] = userDoc.data() as UserRecord;
+      return acc;
+    }, {})));
+    const unsubFlags = onSnapshot(collection(db, "flags"), (snap) => setFlags(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const timer = setInterval(() => setNow(Date.now()), 15000);
 
     return () => {
       unsubSessions();
-      unsubFlags();
-      unsubTxns();
-      unsubCartItems();
+      unsubTransactions();
       unsubUsers();
+      unsubFlags();
+      clearInterval(timer);
     };
   }, []);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setClockTick(Date.now());
-    }, 15000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const currentTimeSeconds = Math.floor(clockTick / 1000);
-    const startOfToday = new Date(clockTick);
-    startOfToday.setHours(0, 0, 0, 0);
-    const startOfTodaySeconds = Math.floor(startOfToday.getTime() / 1000);
-
-    const activeSessions = rawSessions.filter((session) => {
-      if (session.status !== "active") {
-        return false;
-      }
-
-      const expiresAtSeconds = session.expiresAt?.seconds;
-      return !expiresAtSeconds || expiresAtSeconds > currentTimeSeconds;
-    });
-    const activeSessionsFromUsers = Object.entries(usersById).reduce<SessionRecord[]>((acc, [userId, userRecord]) => {
-      const expiresAtSeconds = userRecord.sessionExpiresAt?.seconds || 0;
-      if (
-        userRecord.activeSessionId &&
-        userRecord.activeSessionStatus === "active" &&
-        (!expiresAtSeconds || expiresAtSeconds > currentTimeSeconds) &&
-        !activeSessions.some((session) => session.id === userRecord.activeSessionId)
-      ) {
-        acc.push({
-          id: userRecord.activeSessionId,
-          userId,
-          storeId: userRecord.activeStoreId || "Unknown store",
-          status: "active",
-          createdAt: userRecord.lastSessionActivityAt,
-          lastActivityAt: userRecord.lastSessionActivityAt,
-          expiresAt: userRecord.sessionExpiresAt,
-        });
-      }
-
-      return acc;
-    }, []);
-    const nextDisplaySessions = [...activeSessionsFromUsers, ...rawSessions]
-      .sort((a, b) => (b.lastActivityAt?.seconds || b.createdAt?.seconds || 0) - (a.lastActivityAt?.seconds || a.createdAt?.seconds || 0));
-
-    const usersSeenToday = new Set(
-      rawSessions
-        .filter((session) => (session.createdAt?.seconds || 0) >= startOfTodaySeconds)
-        .map((session) => session.userId)
-        .filter(Boolean)
-    );
-
-    setActiveSessionsCount(activeSessions.length + activeSessionsFromUsers.length);
-    setTotalUsersToday(usersSeenToday.size);
-    setActiveUsersCount(
-      Object.values(usersById).filter((userRecord) => {
-        const lastSeenSeconds = userRecord.lastSeenAt?.seconds || 0;
-        return userRecord.isOnline === true && (currentTimeSeconds - lastSeenSeconds) <= ACTIVE_USER_WINDOW_SECONDS;
-      }).length
-    );
-    setDisplaySessions(nextDisplaySessions);
-  }, [clockTick, rawSessions, usersById]);
+  const activeSessions = sessions.filter((session) => session.status === "active");
+  const activeUsers = Object.values(usersById).filter((user) => user.isOnline).length;
+  const revenue = transactions.reduce((sum, txn) => txn.status === "success" ? sum + Number(txn.amount || 0) : sum, 0);
+  const unresolvedFlags = flags.filter((flag) => flag.status !== "resolved");
 
   const stats = [
-    { label: "Active Users", value: activeUsersCount, icon: Users, color: "text-sky-600", bg: "bg-sky-500/10" },
-    { label: "Active Sessions", value: activeSessionsCount, icon: Users, color: "text-primary", bg: "bg-primary/10" },
-    { label: "Revenue", value: `Rs. ${totalRevenue.toLocaleString()}`, icon: IndianRupee, color: "text-accent", bg: "bg-accent/10" },
-    { label: "Security Flags", value: flagsCount, icon: AlertCircle, color: "text-destructive", bg: "bg-destructive/10" },
-    { label: "Total Users Today", value: totalUsersToday, icon: CheckCircle2, color: "text-green-600", bg: "bg-green-500/10" },
+    { label: "Active Users", value: activeUsers, icon: Users, tone: "bg-primary/10 text-primary", meta: "+2" },
+    { label: "Active Sessions", value: activeSessions.length, icon: Lock, tone: "bg-[color:#7c3aed18] text-[#7c3aed]", meta: "Live" },
+    { label: "Revenue Today", value: formatCurrency(revenue), icon: Star, tone: "bg-[#ffb80018] text-[#ffb800]", meta: "Today" },
+    { label: "Security Flags", value: unresolvedFlags.length, icon: AlertCircle, tone: "bg-[#ff475714] text-[#ff4757]", meta: "Watch" },
   ];
 
-  const formatTime = (seconds?: number) =>
-    seconds ? new Date(seconds * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Just now";
-
-  const getSessionStatus = (session: SessionRecord) => {
-    if (flaggedSessionIds[session.id]) {
-      return {
-        label: "flagged",
-        className: "bg-red-50 text-red-700",
-      };
-    }
-
-    if (session.status === "completed") {
-      return {
-        label: "completed",
-        className: "bg-blue-50 text-blue-700",
-      };
-    }
-
-    return {
-      label: "active",
-      className: "bg-green-50 text-green-700",
-    };
-  };
-
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <header className="space-y-1">
-        <p className="text-sm font-medium text-muted-foreground">Welcome back, Admin</p>
-        <h2 className="text-3xl font-bold">Store Overview</h2>
-        <p className="text-muted-foreground">Live operations for Catalyst Retail Group</p>
+    <div className="space-y-6">
+      <header>
+        <p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[color:#64748b]">Welcome back</p>
+        <h2 className="mt-1 text-[20px] font-extrabold tracking-[-0.4px] text-[color:var(--admin-text)]">Store overview</h2>
+        <p className="mt-1 text-[13px] text-[color:#94a3b8]">Live snapshot · {new Date(now).toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</p>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label} className="rounded-xl border border-border bg-card shadow-none">
-            <CardContent className="flex items-center gap-4 p-5">
-              <div className={`${stat.bg} ${stat.color} rounded-xl p-3`}>
-                <stat.icon className="h-5 w-5" />
+          <div key={stat.label} className="admin-card p-4">
+            <div className="flex items-center justify-between">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${stat.tone}`}>
+                <stat.icon className="h-4 w-4" />
               </div>
-              <div className="min-w-0">
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-                <p className="text-2xl font-bold">{stat.value}</p>
-              </div>
-            </CardContent>
-          </Card>
+              <span className="text-[11px] font-bold text-[color:#64748b]">{stat.meta}</span>
+            </div>
+            <p className="mt-4 text-[20px] font-extrabold text-[color:var(--admin-text)]">{stat.value}</p>
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[color:#94a3b8]">{stat.label}</p>
+          </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[1.35fr_1.1fr_0.75fr]">
-        <Card className="overflow-hidden rounded-xl border border-border bg-card shadow-none">
-          <CardHeader>
-            <CardTitle>Recent Sessions</CardTitle>
-            <CardDescription>Latest active and completed shopper sessions.</CardDescription>
-          </CardHeader>
-          <Table>
-            <TableHeader className="bg-muted/50 border-b-border">
-              <TableRow>
-                <TableHead>Store</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Items</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Last Activity</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displaySessions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="px-6 py-16">
-                    <div className="flex flex-col items-center justify-center text-center">
-                      <p className="text-base font-medium text-foreground">No active sessions right now</p>
-                      <p className="mt-1 text-sm text-muted-foreground">New shopper sessions will appear here once they start.</p>
+      <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
+        <div className="space-y-6">
+          <div className="admin-card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[color:#f1f5f9] p-4">
+              <div>
+                <h3 className="text-[13px] font-bold">Live sessions</h3>
+                <p className="text-[12px] text-[color:#94a3b8]">Active and flagged shoppers right now</p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
+                <span className="pulse-dot h-1.5 w-1.5 rounded-full bg-primary" /> Live
+              </span>
+            </div>
+            <div>
+              {activeSessions.slice(0, 6).map((session) => (
+                <div key={session.id} className="flex items-center justify-between border-b border-[color:#f1f5f9] px-4 py-3 last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[color:#dbeafe] text-[11px] font-bold text-[color:#0f172a]">
+                      {(usersById[session.userId || ""]?.name || "U").slice(0, 1).toUpperCase()}
                     </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                displaySessions.slice(0, 6).map((session: SessionRecord) => {
-                  const cartSummary = cartSummaries[session.id];
-                  const itemCount = cartSummary?.itemCount || 0;
-                  const liveTotal = cartSummary?.totalAmount || 0;
-                  const displayTotal = session.status === "active"
-                    ? liveTotal
-                    : Number(session.totalAmount || 0);
-                  const shopperName = session.userId ? usersById[session.userId]?.name : null;
-                  const status = getSessionStatus(session);
-
-                  return (
-                    <TableRow key={session.id} className="hover:bg-muted/30">
-                      <TableCell className="font-medium">{session.storeId || "Unknown store"}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{shopperName || "Unknown shopper"}</TableCell>
-                      <TableCell>{itemCount}</TableCell>
-                      <TableCell>{formatTime(session.createdAt?.seconds)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatTime(session.lastActivityAt?.seconds || session.createdAt?.seconds)}</TableCell>
-                      <TableCell>Rs. {displayTotal.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${status.className}`}>
-                          {status.label}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </Card>
-
-        <Card className="overflow-hidden rounded-xl border border-border bg-card shadow-none">
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-            <CardDescription>Latest checkout activity across the store.</CardDescription>
-          </CardHeader>
-          <Table>
-            <TableHeader className="bg-muted/50 border-b-border">
-              <TableRow>
-                <TableHead>Txn Ref</TableHead>
-                <TableHead>Session</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center p-8 text-muted-foreground">No transactions yet.</TableCell>
-                </TableRow>
-              ) : (
-                transactions.map((txn) => (
-                  <TableRow key={txn.id} className="hover:bg-muted/30">
-                    <TableCell className="font-mono text-xs font-medium">{txn.txnRef || txn.id}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{txn.sessionId?.slice(0, 10) || "Unknown"}...</TableCell>
-                    <TableCell className="font-medium">Rs. {Number(txn.amount || 0).toFixed(2)}</TableCell>
-                    <TableCell>{formatTime(txn.createdAt?.seconds)}</TableCell>
-                    <TableCell>
-                      <span
-                        className={
-                          txn.status === "success"
-                            ? "inline-flex rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700"
-                            : txn.status === "failed"
-                              ? "inline-flex rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700"
-                              : "inline-flex rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-700"
-                        }
-                      >
-                        {txn.status || "pending"}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </Card>
-
-        <Card className="border border-border bg-card p-6 text-center shadow-none rounded-xl">
-          <CardHeader>
-            <CardTitle>Catalyst Express</CardTitle>
-            <CardDescription>Shopper QR Check-in Gateway</CardDescription>
-          </CardHeader>
-          <div className="mx-auto flex max-w-xs justify-center rounded-xl bg-white p-6">
-            <QRCodeSVG value="catalyst-express-01" size={200} level={"H"} />
+                    <div>
+                      <p className="text-[11px] font-bold">{usersById[session.userId || ""]?.name || "Unknown shopper"}</p>
+                      <p className="text-[10px] text-[color:#94a3b8]">{session.storeId || "Store"} · active</p>
+                    </div>
+                  </div>
+                  <span className="rounded-md bg-primary/10 px-2 py-1 text-[9px] font-bold uppercase tracking-[0.04em] text-primary">Active</span>
+                </div>
+              ))}
+              {activeSessions.length === 0 ? <div className="p-6 text-[12px] text-[color:#94a3b8]">No live sessions right now.</div> : null}
+            </div>
           </div>
-          <p className="mt-6 font-mono text-sm text-muted-foreground">Store ID: catalyst-express-01</p>
-        </Card>
+
+          <div className="admin-card overflow-hidden">
+            <div className="border-b border-[color:#f1f5f9] p-4">
+              <h3 className="text-[13px] font-bold">Flags</h3>
+            </div>
+            <div>
+              {unresolvedFlags.slice(0, 5).map((flag) => (
+                <div key={flag.id} className="flex items-center justify-between gap-3 border-b border-[color:#f1f5f9] px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <p className="truncate text-[11px] font-bold">{flag.reason || "Unusual activity"}</p>
+                    <p className="text-[10px] text-[color:#94a3b8]">{flag.severity || "medium"} · {flag.timestamp?.seconds ? new Date(flag.timestamp.seconds * 1000).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "now"}</p>
+                  </div>
+                  <button
+                    onClick={() => updateDoc(doc(db, "flags", flag.id), { resolved: true, status: "resolved" })}
+                    className="rounded-lg border border-[color:#e2e8f0] px-3 py-2 text-[11px] font-bold text-[color:#0f172a]"
+                  >
+                    Resolve
+                  </button>
+                </div>
+              ))}
+              {unresolvedFlags.length === 0 ? <div className="p-6 text-[12px] text-[color:#94a3b8]">No unresolved flags.</div> : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-[14px] border border-[color:#1e2d45] bg-[#0f172a] p-4 text-white">
+            <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-primary">Store check-in QR</p>
+            <div className="mt-4 rounded-xl bg-white p-4">
+              <QRCodeSVG value="catalyst-express-01" size={180} className="mx-auto" />
+            </div>
+            <p className="mt-4 text-[12px] text-[color:#8b95b0]">Catalyst Express</p>
+            <p className="mt-1 font-mono text-[10px] text-[color:#4a5568]">catalyst-express-01</p>
+          </div>
+        </div>
       </div>
     </div>
   );
